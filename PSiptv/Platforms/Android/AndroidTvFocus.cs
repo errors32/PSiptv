@@ -1,5 +1,8 @@
 using System.Runtime.CompilerServices;
+using Android.Content;
 using Android.Views;
+using Android.Views.InputMethods;
+using Android.Widget;
 using PSiptv.Views;
 using NativeView = Android.Views.View;
 
@@ -14,6 +17,7 @@ internal static class AndroidTvFocus
 {
     private static readonly ConditionalWeakTable<NativeView, FocusBridge> Bridges = new();
     private static readonly ConditionalWeakTable<NativeView, CollectionFocusBridge> Collections = new();
+    private static readonly ConditionalWeakTable<NativeView, TextInputBridge> TextInputs = new();
     private static WeakReference<TvFocusableBorder>? highlightedCard;
 
     internal static void Attach(NativeView platformView, TvFocusableBorder card) =>
@@ -21,6 +25,9 @@ internal static class AndroidTvFocus
 
     internal static void AttachCollection(NativeView platformView) =>
         Collections.GetValue(platformView, view => new CollectionFocusBridge(view));
+
+    internal static void AttachTextInput(NativeView platformView) =>
+        TextInputs.GetValue(platformView, view => new TextInputBridge(view));
 
     private static void HighlightCardFor(NativeView? focusedView)
     {
@@ -118,5 +125,71 @@ internal static class AndroidTvFocus
 
         private static void OnGlobalFocusChange(object? sender, ViewTreeObserver.GlobalFocusChangeEventArgs e) =>
             HighlightCardFor(e.NewFocus);
+    }
+
+    /// <summary>
+    /// Android normally opens the IME after a touch on an EditText. A TV remote
+    /// changes native focus and activates it with a key instead, which several
+    /// Android TV implementations do not translate into that touch behaviour.
+    /// Explicitly request the IME when the field receives focus or is activated.
+    /// </summary>
+    private sealed class TextInputBridge
+    {
+        private readonly NativeView host;
+        private readonly EditText? editor;
+
+        internal TextInputBridge(NativeView view)
+        {
+            host = view;
+            editor = FindEditor(view);
+            if (editor is null) return;
+
+            editor.ShowSoftInputOnFocus = true;
+            host.FocusChange += OnFocusChange;
+            host.KeyPress += OnKeyPress;
+            host.Click += OnClick;
+            if (!ReferenceEquals(host, editor))
+            {
+                editor.FocusChange += OnFocusChange;
+                editor.KeyPress += OnKeyPress;
+                editor.Click += OnClick;
+            }
+        }
+
+        private static EditText? FindEditor(NativeView view)
+        {
+            if (view is EditText editText) return editText;
+            if (view is not ViewGroup group) return null;
+            for (var index = 0; index < group.ChildCount; index++)
+                if (group.GetChildAt(index) is { } child && FindEditor(child) is { } found) return found;
+            return null;
+        }
+
+        private void OnFocusChange(object? sender, NativeView.FocusChangeEventArgs e)
+        {
+            if (e.HasFocus) ShowKeyboard();
+        }
+
+        private void OnClick(object? sender, EventArgs e) => ShowKeyboard();
+
+        private void OnKeyPress(object? sender, NativeView.KeyEventArgs e)
+        {
+            if (e.Event?.Action != KeyEventActions.Up || e.KeyCode is not
+                (Keycode.DpadCenter or Keycode.Enter or Keycode.NumpadEnter)) return;
+            ShowKeyboard();
+            e.Handled = true;
+        }
+
+        private void ShowKeyboard()
+        {
+            if (editor is null) return;
+            if (!editor.HasFocus) editor.RequestFocus();
+            editor.Post(() =>
+            {
+                if (!editor.HasFocus || !editor.IsShown) return;
+                var input = editor.Context?.GetSystemService(Context.InputMethodService) as InputMethodManager;
+                input?.ShowSoftInput(editor, ShowFlags.Implicit);
+            });
+        }
     }
 }

@@ -49,6 +49,14 @@ namespace PSiptv
                 handler.PlatformView.DescendantFocusability = Android.Views.DescendantFocusability.AfterDescendants;
                 AndroidTvFocus.AttachCollection(handler.PlatformView);
             });
+            EntryHandler.Mapper.AppendToMapping("AndroidTvSoftKeyboard", (handler, _) =>
+            {
+                if (Ui.IsTelevision) AndroidTvFocus.AttachTextInput(handler.PlatformView);
+            });
+            SearchBarHandler.Mapper.AppendToMapping("AndroidTvSoftKeyboard", (handler, _) =>
+            {
+                if (Ui.IsTelevision) AndroidTvFocus.AttachTextInput(handler.PlatformView);
+            });
 #endif
 #if DEBUG
     		builder.Logging.AddDebug();
