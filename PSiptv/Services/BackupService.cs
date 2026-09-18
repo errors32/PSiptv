@@ -29,10 +29,13 @@ public static class BackupService
             if (await SecureStorage.Default.GetAsync($"catalog-options.{account.Id}") is { } json)
                 catalogOptions[account.Id] = json;
 
+        var protectedGitHubToken = GitHubTokenBackupProtection.Protect(
+            await GitHubUpdateTokenStore.ReadAsync());
+
         var document = new BackupDocument(Version, DateTimeOffset.UtcNow, accounts,
             UserProfileService.Profiles.ToArray(),
             personal, catalogOptions, ReadSettings(), BrowserSourcesService.Sources,
-            BrowserSourcesService.Default?.Id ?? "");
+            BrowserSourcesService.Default?.Id ?? "", protectedGitHubToken);
         return await Task.Run(() => JsonSerializer.SerializeToUtf8Bytes(document));
     }
 
@@ -52,6 +55,10 @@ public static class BackupService
         }
         if (document.Version != Version)
             throw new InvalidOperationException("Esta versão da cópia de segurança não é suportada.");
+
+        // Validate and decrypt sensitive portable data before changing local state,
+        // so a damaged backup cannot leave a partially restored configuration.
+        var githubToken = GitHubTokenBackupProtection.Unprotect(document.ProtectedGitHubToken);
 
         await UserProfileService.MergeAsync(document.Profiles);
         foreach (var account in document.Accounts) await AppServices.Accounts.SaveAsync(account);
@@ -80,6 +87,7 @@ public static class BackupService
             .GroupBy(source => source.Id).Select(group => group.Last()).ToArray();
         BrowserSourcesService.Replace(browserSources, document.DefaultBrowserSourceId);
         ApplySettings(document.Settings, accountIds);
+        if (githubToken.Length > 0) await GitHubUpdateTokenStore.SaveAsync(githubToken);
         AppServices.Lock();
     }
 
@@ -161,7 +169,8 @@ public static class BackupService
     private sealed record BackupDocument(int Version, DateTimeOffset CreatedAt,
         IReadOnlyList<PlaylistAccount> Accounts, IReadOnlyList<UserProfile> Profiles,
         IReadOnlyList<ProfileBackupData> PersonalData, IReadOnlyDictionary<string, string> CatalogOptions,
-        BackupSettings Settings, IReadOnlyList<BrowserSource> BrowserSources, string DefaultBrowserSourceId);
+        BackupSettings Settings, IReadOnlyList<BrowserSource> BrowserSources, string DefaultBrowserSourceId,
+        string ProtectedGitHubToken = "");
     private sealed record ProfileBackupData(string ProfileId, string AccountId,
         IReadOnlyList<FavoriteEntry> Favorites, IReadOnlyList<WatchEntry> History,
         IReadOnlyList<ProgrammeReminder>? Reminders, IReadOnlyList<DvrSeriesRule>? SeriesRules = null);

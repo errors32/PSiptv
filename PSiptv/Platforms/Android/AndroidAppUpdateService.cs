@@ -32,7 +32,6 @@ public enum InstallRequestResult { InstallerOpened, PermissionRequired }
 
 public static class AndroidAppUpdateService
 {
-    private const string TokenKey = "github-releases.token";
     private const string LastAutomaticCheckKey = "github-releases.last-check";
     private static readonly TimeSpan AutomaticCheckInterval = TimeSpan.FromDays(1);
     private static readonly SemaphoreSlim checkGate = new(1, 1);
@@ -48,22 +47,17 @@ public static class AndroidAppUpdateService
     }
 
     public static async Task<bool> HasTokenAsync() =>
-        !string.IsNullOrWhiteSpace(await SecureStorage.Default.GetAsync(TokenKey));
+        !string.IsNullOrWhiteSpace(await GitHubUpdateTokenStore.ReadAsync());
 
     public static async Task SaveTokenAsync(string token)
     {
-        var normalized = token.Trim();
-        if (normalized.Length == 0) throw new InvalidOperationException("Introduza um token GitHub.");
-        if (normalized.Any(char.IsWhiteSpace) || normalized.IndexOfAny(['\\', '"', '\'']) >= 0)
-            throw new InvalidOperationException(
-                "Cole apenas o token GitHub, sem aspas, barras invertidas ou espaços.");
-        await SecureStorage.Default.SetAsync(TokenKey, normalized);
+        await GitHubUpdateTokenStore.SaveAsync(token);
         Preferences.Default.Remove(LastAutomaticCheckKey);
     }
 
     public static void RemoveToken()
     {
-        SecureStorage.Default.Remove(TokenKey);
+        GitHubUpdateTokenStore.Remove();
         Preferences.Default.Remove(LastAutomaticCheckKey);
     }
 
@@ -285,7 +279,7 @@ public static class AndroidAppUpdateService
     }
 
     private static async Task<string> ReadTokenAsync() =>
-        (await SecureStorage.Default.GetAsync(TokenKey))?.Trim() is { Length: > 0 } token
+        (await GitHubUpdateTokenStore.ReadAsync()) is { Length: > 0 } token
             ? token : throw new InvalidOperationException("Configure primeiro um token GitHub para o repositório privado.");
 
     private static string Metadata(string name) => typeof(AndroidAppUpdateService).Assembly

@@ -192,6 +192,19 @@ Check(!Encoding.UTF8.GetString(protectedCache).Contains("password", StringCompar
     "Cache persistente protege endereços e recupera o catálogo");
 Reject(() => AccountDataProtection.UnprotectData(protectedCache, encryptionKey, "catalog:test:1"),
     "Cache encriptado fica associado à lista e ao tipo de conteúdo");
+var githubToken = "github_pat_private-update-token";
+var protectedGitHubToken = GitHubTokenBackupProtection.Protect(githubToken);
+Check(protectedGitHubToken.StartsWith("enc:v1:", StringComparison.Ordinal) &&
+      !protectedGitHubToken.Contains(githubToken, StringComparison.Ordinal) &&
+      GitHubTokenBackupProtection.Unprotect(protectedGitHubToken) == githubToken,
+    "Cópia de segurança encripta e recupera o token GitHub");
+var tamperedGitHubToken = protectedGitHubToken[..10] +
+    (protectedGitHubToken[10] == 'A' ? 'B' : 'A') + protectedGitHubToken[11..];
+Reject(() => GitHubTokenBackupProtection.Unprotect(tamperedGitHubToken),
+    "Token GitHub protegido deteta alterações no ficheiro");
+Check(GitHubTokenBackupProtection.Protect("") == "" &&
+      GitHubTokenBackupProtection.Unprotect("") == "",
+    "Cópia de segurança mantém compatibilidade quando não existe token GitHub");
 var largeMovieCatalog = Enumerable.Range(0, 20_000)
     .Select(i => new MediaItem(i.ToString(), $"Filme {i}", "Cinema", MediaKind.Movie,
         $"https://example.test/movie/user/password/{i}.mp4", "https://example.test/poster.jpg"))
