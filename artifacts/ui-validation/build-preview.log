@@ -1,0 +1,15 @@
+  OpenIPTV.Core -> C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV.Core\bin\Debug\net10.0\OpenIPTV.Core.dll
+  XAML source generation is enabled (MauiXamlInflator=SourceGen). This generates C# code from XAML at compile time for better performance. To disable, remove the MauiXamlInflator line from your .csproj file (reverts to configuration-based defaults: Runtime in Debug, XamlC in Release).
+C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV\Services\ScreenOrientationService.cs(19,17): warning CS8602: Dereference of a possibly null reference. [C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV\OpenIPTV.csproj::TargetFramework=net10.0-android]
+C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV\Services\ScreenOrientationService.cs(22,18): warning CS8602: Dereference of a possibly null reference. [C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV\OpenIPTV.csproj::TargetFramework=net10.0-android]
+  OpenIPTV -> C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV\bin\Debug\net10.0-android\OpenIPTV.dll
+  OpenIPTV.Core -> C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV.Core\bin\Debug\net10.0\OpenIPTV.Core.dll
+
+Build succeeded.
+
+C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV\Services\ScreenOrientationService.cs(19,17): warning CS8602: Dereference of a possibly null reference. [C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV\OpenIPTV.csproj::TargetFramework=net10.0-android]
+C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV\Services\ScreenOrientationService.cs(22,18): warning CS8602: Dereference of a possibly null reference. [C:\Users\soeir\source\repos\MAUI\OpenIPTV\OpenIPTV\OpenIPTV.csproj::TargetFramework=net10.0-android]
+    2 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:02:44.81

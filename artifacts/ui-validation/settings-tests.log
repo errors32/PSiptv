@@ -1,0 +1,48 @@
+PASS: M3U ignora esquemas não suportados
+PASS: M3U preserva vírgulas em nomes e atributos
+PASS: M3U resolve URLs relativos
+PASS: M3U associa XMLTV e tvg-id
+PASS: M3U classifica VOD e EXTGRP
+PASS: M3U rejeita resposta HTML
+PASS: M3U rejeita lista vazia
+PASS: Endereços limitados a HTTP/HTTPS
+PASS: PIN correto e incorreto
+PASS: PIN usa sal aleatório
+PASS: PIN rejeita formatos inválidos
+PASS: XMLTV não salta programas consecutivos
+PASS: XMLTV interpreta fuso horário e entidades
+PASS: XMLTV rejeita documento incorreto
+PASS: Xtream aceita IDs numéricos e texto
+PASS: Xtream codifica credenciais no URL de reprodução
+PASS: Xtream codifica credenciais nos pedidos API
+PASS: Xtream ordena temporadas e preserva extensões
+PASS: Xtream descodifica EPG Base64
+PASS: Xtream recusa autenticação inválida
+PASS: Pedidos respeitam cancelamento
+PASS: Leitor externo impede injeção de entradas por nomes
+PASS: Leitor externo preserva parâmetros da transmissão
+PASS: Leitor externo rejeita endereços não HTTP
+PASS: Favoritos persistem entre instâncias
+PASS: Favoritos atualizam sem duplicar
+PASS: Favoritos isolados por lista
+PASS: Remover favorito não altera outra lista
+PASS: Favoritos M3U sobrevivem a reordenação
+PASS: Favoritos distinguem IDs de canais e filmes
+PASS: Favoritos distinguem séries e episódios
+PASS: Gravações concorrentes não perdem favoritos
+PASS: Eliminar lista limpa apenas os seus favoritos
+PASS: Ordenação por nome respeita o tipo de conteúdo
+PASS: Categorias ocultas não aparecem na pesquisa global
+PASS: Categoria personalizada filtra membros e pesquisa
+PASS: Bloqueio de categoria personalizada protege o conteúdo fora dela
+PASS: Bloqueio protege categoria original
+PASS: Desativar controlo parental permite reprodução
+PASS: Ordem personalizada precede ordem alfabética
+PASS: Ocultar categoria personalizada remove-a do menu
+PASS: Formato MPEGTS modifica apenas a extensão Xtream
+PASS: Formato preserva endereços M3U
+PASS: Formato preserva filmes
+PASS: Agente personalizado é enviado ao fornecedor
+PASS: Episódios herdam bloqueio de séries em categorias personalizadas
+
+46 verificações concluídas.

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationId>com.PS.PSiptv.wear</ApplicationId>
+    <ApplicationTitle>PSiptv Remote</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifiers>android-arm;android-arm64;android-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PSiptv.Core\PSiptv.Core.csproj" />
+  </ItemGroup>
+</Project>

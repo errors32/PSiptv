@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<uses-feature android:name="android.software.leanback" android:required="false" />
+	<uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+	<uses-feature android:name="android.hardware.type.automotive" android:required="false" />
+	<uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
+	<uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+	<queries>
+		<intent>
+			<action android:name="android.intent.action.VIEW" />
+			<category android:name="android.intent.category.BROWSABLE" />
+			<data android:scheme="http" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.VIEW" />
+			<category android:name="android.intent.category.BROWSABLE" />
+			<data android:scheme="https" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.MAIN" />
+			<category android:name="android.intent.category.APP_BROWSER" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.VIEW" />
+			<data android:scheme="http" android:mimeType="video/*" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.VIEW" />
+			<data android:scheme="https" android:mimeType="video/*" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.VIEW" />
+			<category android:name="android.intent.category.DEFAULT" />
+			<data android:scheme="content" android:mimeType="vnd.android.document/directory" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
+			<category android:name="android.intent.category.DEFAULT" />
+		</intent>
+		<!-- Explicit visibility fallbacks for browsers on Android variants that
+		     restrict generic intent queries more aggressively. -->
+		<package android:name="com.android.chrome" />
+		<package android:name="com.brave.browser" />
+		<package android:name="com.opera.browser" />
+		<package android:name="com.opera.mini.native" />
+		<package android:name="com.opera.touch" />
+		<package android:name="org.mozilla.firefox" />
+		<package android:name="org.torproject.torbrowser" />
+		<package android:name="com.microsoft.emmx" />
+		<package android:name="com.duckduckgo.mobile.android" />
+		<package android:name="com.vivaldi.browser" />
+		<package android:name="com.sec.android.app.sbrowser" />
+		<!-- Common external video players. Intent queries above also discover
+		     compatible players that are not listed explicitly here. -->
+		<package android:name="org.videolan.vlc" />
+		<package android:name="com.mxtech.videoplayer.ad" />
+		<package android:name="com.mxtech.videoplayer.pro" />
+		<package android:name="org.courville.nova" />
+		<package android:name="is.xyz.mpv" />
+		<package android:name="com.brouken.player" />
+		<package android:name="org.xbmc.kodi" />
+	</queries>
+	<application android:allowBackup="false" android:usesCleartextTraffic="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:banner="@drawable/psiptv_banner" android:appCategory="video" android:supportsRtl="true">
+		<meta-data android:name="com.android.automotive" android:resource="@xml/automotive_app_desc" />
+		<meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME" android:value="com.PS.PSiptv.ChromecastOptionsProvider" />
+	</application>
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+	<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+	<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+	<uses-permission android:name="android.permission.INTERNET" />
+	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+	<uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-permission android:name="android.permission.USE_BIOMETRIC" />
+<uses-permission android:name="android.permission.USE_FINGERPRINT" />
+</manifest>
+
+

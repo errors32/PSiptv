@@ -1,0 +1,9 @@
+Android resource mismatch fixed:
+- Before: R.txt navigationlayout_content = 0x7f0a0134; Java R.java = 0x7f0a0189.
+- After clean Android rebuild: both = 0x7f0a0189; leftToRight = 0x7f0a0134.
+- Android Debug embeds assemblies into APK to avoid stale Fast Deployment assemblies.
+- Build: succeeded, 0 warnings, 0 errors.
+- Existing emulator APK had a different signing key; it was not uninstalled.
+- Updated only its Fast Deployment _Microsoft.Android.Resource.Designer.dll; restored file mode 400.
+- Runtime process 11820: launched, opened Profile and Settings, backgrounded and resumed.
+- No FATAL EXCEPTION / No view found / UNHANDLED EXCEPTION in that process log.

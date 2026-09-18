@@ -1,0 +1,129 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net10.0-android</TargetFrameworks>
+		<TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+
+		<!-- Note for MacCatalyst:
+		The default runtime is maccatalyst-x64, except in Release config, in which case the default is maccatalyst-x64;maccatalyst-arm64.
+		When specifying both architectures, use the plural <RuntimeIdentifiers> instead of the singular <RuntimeIdentifier>.
+		The Mac App Store will NOT accept apps with ONLY maccatalyst-arm64 indicated;
+		either BOTH runtimes must be indicated or ONLY macatalyst-x64. -->
+		<!-- For example: <RuntimeIdentifiers>maccatalyst-x64;maccatalyst-arm64</RuntimeIdentifiers> -->
+
+		<OutputType>Exe</OutputType>
+		<RootNamespace>PSiptv</RootNamespace>
+		<UseMaui>true</UseMaui>
+		<SingleProject>true</SingleProject>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- Enable XAML source generation for faster build times and improved performance.
+		     This generates C# code from XAML at compile time instead of runtime inflation.
+		     To disable, remove this line.
+		     For individual files, you can override by setting Inflator metadata:
+		       <MauiXaml Update="MyPage.xaml" Inflator="Default" /> (reverts to defaults: Runtime for Debug, XamlC for Release)
+		       <MauiXaml Update="MyPage.xaml" Inflator="Runtime" /> (force runtime inflation) -->
+		<MauiXamlInflator>SourceGen</MauiXamlInflator>
+
+		<!-- Display name -->
+		<ApplicationTitle>PSiptv</ApplicationTitle>
+
+		<!-- App Identifier -->
+		<ApplicationId>com.PS.PSiptv</ApplicationId>
+
+		<!-- Versions -->
+		<ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
+		<!-- Android uses this integer to decide whether an APK is an update. It must
+		     increase for every package distributed to an existing installation. -->
+		<!-- Generate a monotonically increasing Android-compatible build number
+		     from the current UTC time (minutes since the Unix epoch). -->
+		<ApplicationVersion>$([MSBuild]::Divide($([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()), 60))</ApplicationVersion>
+
+		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
+		<WindowsPackageType>None</WindowsPackageType>
+
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
+		<!-- Xiaomi/Android TV devices frequently run a 32-bit userspace even on
+		     64-bit ARM processors. Ship both ARM ABIs plus x64 for emulators. -->
+		<RuntimeIdentifiers Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">android-arm;android-arm64;android-x64</RuntimeIdentifiers>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
+		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- App Icon -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.65" Color="#0F172C" />
+
+		<!-- Splash Screen -->
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0F172C" BaseSize="256,256" />
+
+		<!-- Images -->
+		<MauiImage Include="Resources\Images\*" />
+		<MauiImage Update="Resources\Images\nav_home.svg;Resources\Images\nav_live.svg;Resources\Images\nav_movies.svg;Resources\Images\nav_favorites.svg;Resources\Images\nav_browser.svg" Resize="True" BaseSize="32,32" />
+		<MauiImage Update="Resources\Images\psiptv_mark.svg" Resize="True" BaseSize="256,256" />
+		<MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
+		<!-- Android TV requires the xhdpi banner to be exactly 320x180 px. -->
+		<MauiImage Update="Resources\Images\tv_banner.png" Resize="True" BaseSize="160,90" />
+		<MauiImage Update="Resources\Images\psiptv_banner.svg" Resize="True" BaseSize="320,180" />
+		
+		<!-- Custom Fonts -->
+		<MauiFont Include="Resources\Fonts\*" />
+
+		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Maui" Version="14.2.2" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.60" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+        <PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="10.0.0" />
+        <ProjectReference Include="..\PSiptv.Core\PSiptv.Core.csproj" />
+	</ItemGroup>
+
+    <!-- Keep managed assemblies and Android resource IDs in the same deployment.
+         Avoid stale Fast Deployment overrides after resource/icon changes. -->
+    <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Debug'">
+        <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Release'">
+        <!-- AAB files cannot be installed directly on a device. The distributable
+             side-load/update artifact is always an APK. -->
+        <AndroidPackageFormats>apk</AndroidPackageFormats>
+        <AndroidKeyStore>true</AndroidKeyStore>
+        <AndroidSigningKeyStore Condition="'$(AndroidSigningKeyStore)' == ''">$(PSIPTV_ANDROID_KEYSTORE)</AndroidSigningKeyStore>
+        <AndroidSigningKeyAlias Condition="'$(AndroidSigningKeyAlias)' == ''">$(PSIPTV_ANDROID_KEY_ALIAS)</AndroidSigningKeyAlias>
+        <AndroidSigningKeyPass Condition="'$(AndroidSigningKeyPass)' == ''">$(PSIPTV_ANDROID_KEY_PASSWORD)</AndroidSigningKeyPass>
+        <AndroidSigningStorePass Condition="'$(AndroidSigningStorePass)' == ''">$(PSIPTV_ANDROID_STORE_PASSWORD)</AndroidSigningStorePass>
+    </PropertyGroup>
+    <Target Name="ValidateAndroidReleaseSigning"
+            BeforeTargets="Build"
+            Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Release'">
+        <Error Condition="'$(AndroidSigningKeyStore)' == '' or !Exists('$(AndroidSigningKeyStore)')"
+               Text="Android Release requires a stable signing keystore. Set PSIPTV_ANDROID_KEYSTORE (or AndroidSigningKeyStore) to an existing file." />
+        <Error Condition="'$(AndroidSigningKeyAlias)' == ''"
+               Text="Android Release requires PSIPTV_ANDROID_KEY_ALIAS (or AndroidSigningKeyAlias)." />
+        <Error Condition="'$(AndroidSigningKeyPass)' == '' or '$(AndroidSigningStorePass)' == ''"
+               Text="Android Release requires PSIPTV_ANDROID_KEY_PASSWORD and PSIPTV_ANDROID_STORE_PASSWORD (or the corresponding MSBuild properties)." />
+    </Target>
+    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+        <PackageReference Include="LibVLCSharp.MAUI" Version="3.10.1" />
+        <PackageReference Include="VideoLAN.LibVLC.Android" Version="3.7.0-beta" />
+        <!-- This Cast binding generation matches the AndroidX versions used by
+             MAUI 10.0.60, avoiding duplicate Fragment/KTX classes at deploy. -->
+        <PackageReference Include="Xamarin.GooglePlayServices.Cast.Framework" Version="122.1.0.1" />
+    </ItemGroup>
+</Project>
+
+
+
+
+
+
+
+
+

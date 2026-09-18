@@ -1,0 +1,13 @@
+Validation: biometric unlock, last playlist and branding
+- Android and Windows builds succeeded with 0 warnings and 0 errors.
+- Existing Core suite: 33 checks passed.
+- Isolated Android test install used separate obj/validation and bin/validation directories.
+- Created a local fake M3U playlist with PIN.
+- Incorrect PIN rejected; correct PIN opened the catalog.
+- Cold restart automatically selected the last opened playlist and displayed authentication.
+- Cancelling authentication left the playlist locked without repeated prompts.
+- No native navigation exception in the tested process.
+- Android icon rendered and inspected.
+- The emulator has no enrolled fingerprints: biometric hardware success and Face ID remain to be checked on configured physical devices.
+- Apple targets were not compiled on this Windows host.
+- Temporary test install, local HTTP fixture server and adb reverse mapping removed.

@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="PSiptv/PSiptv.csproj" />
+  <Project Path="PSiptv.Core/PSiptv.Core.csproj" />
+  <Project Path="PSiptv.Tests/PSiptv.Tests.csproj" />
+  <Project Path="PSiptv.Wear/PSiptv.Wear.csproj" />
+</Solution>
+

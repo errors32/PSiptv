@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#0F172C"/>
+  <g transform="translate(24 43)" fill="none" stroke="#36D6B0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M40 18 27 5M52 18 65 5"/>
+    <rect x="5" y="18" width="82" height="61" rx="14"/>
+  </g>
+  <path fill="#FFFFFF" d="M63 76c0-3 3-5 6-3l25 14c3 2 3 6 0 8l-25 14c-3 2-6 0-6-3Z"/>
+  <text x="126" y="105" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="39" font-weight="700">PS<tspan fill="#36D6B0">IPTV</tspan></text>
+</svg>

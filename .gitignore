@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Generated build and UI-validation dependencies (too large for GitHub)
+/artifacts/*.apk
+/artifacts/ui-validation/pydeps/
