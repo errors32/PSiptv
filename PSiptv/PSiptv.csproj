@@ -34,7 +34,7 @@
 		<ApplicationId>com.PS.PSiptv</ApplicationId>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>1.2.2</ApplicationDisplayVersion>
 		<!-- Android uses this integer to decide whether an APK is an update. It must
 		     increase for every package distributed to an existing installation. -->
 		<!-- Generate a monotonically increasing Android-compatible build number
@@ -47,6 +47,10 @@
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
+		<GitHubReleaseOwner Condition="'$(GitHubReleaseOwner)' == ''">errors32</GitHubReleaseOwner>
+		<GitHubReleaseRepository Condition="'$(GitHubReleaseRepository)' == ''">PSiptv</GitHubReleaseRepository>
+		<!-- {version} is replaced with the Release tag without a leading v. -->
+		<GitHubReleaseAssetName Condition="'$(GitHubReleaseAssetName)' == ''">PSiptv.v{version}.apk</GitHubReleaseAssetName>
 		<!-- Xiaomi/Android TV devices frequently run a 32-bit userspace even on
 		     64-bit ARM processors. Ship both ARM ABIs plus x64 for emulators. -->
 		<RuntimeIdentifiers Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">android-arm;android-arm64;android-x64</RuntimeIdentifiers>
@@ -75,6 +79,21 @@
 
 		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+			<_Parameter1>GitHubReleaseOwner</_Parameter1>
+			<_Parameter2>$(GitHubReleaseOwner)</_Parameter2>
+		</AssemblyAttribute>
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+			<_Parameter1>GitHubReleaseRepository</_Parameter1>
+			<_Parameter2>$(GitHubReleaseRepository)</_Parameter2>
+		</AssemblyAttribute>
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+			<_Parameter1>GitHubReleaseAssetName</_Parameter1>
+			<_Parameter2>$(GitHubReleaseAssetName)</_Parameter2>
+		</AssemblyAttribute>
 	</ItemGroup>
 
 	<ItemGroup>

@@ -287,6 +287,9 @@ public partial class MainPage : ContentPage
             if (AppServices.ActiveAccount is null)
                 status.Text = LanguageService.Text("Adicione uma conta Xtream ou uma lista M3U para começar.");
         }
+#if ANDROID
+        _ = AndroidAppUpdateService.CheckOnStartupAsync(this);
+#endif
     }
 
     private void OnAutomaticCatalogUpdated(CatalogUpdateResult result)

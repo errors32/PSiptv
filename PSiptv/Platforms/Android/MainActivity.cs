@@ -32,6 +32,11 @@ namespace PSiptv
             if (PSiptv.Services.DeviceProfile.IsAutomotive) PSiptv.Services.AppServices.SuspendPlayback();
             base.OnPause();
         }
+        protected override void OnResume()
+        {
+            base.OnResume();
+            PSiptv.Services.AndroidAppUpdateService.TryResumePendingInstall(this);
+        }
         protected override void OnNewIntent(Intent? intent)
         {
             base.OnNewIntent(intent);

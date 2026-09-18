@@ -74,6 +74,38 @@ ser aberto diretamente no telemóvel ou Android TV. Uma instalação existente s
 aceita a atualização quando o identificador do pacote e a assinatura coincidem e o
 novo `ApplicationVersion` é superior.
 
+### Atualizações Android através de GitHub Releases
+
+No Android, **Configurações → Sobre → Atualizações da aplicação** verifica a
+última Release publicada, descarrega o APK privado com progresso, valida o
+tamanho, o digest SHA-256 (quando fornecido pelo GitHub), o identificador do
+pacote e o `versionCode`, e abre o instalador do sistema. A verificação
+automática ocorre no máximo uma vez por dia e apenas depois de configurar o
+acesso ao repositório privado.
+
+Crie para cada dispositivo/utilizador um fine-grained personal access token
+limitado ao repositório, com a permissão **Contents: Read-only**, e introduza-o
+nessa página. O token é guardado pelo `SecureStorage` do dispositivo; nunca o
+inclua no projeto nem no APK. A Release deve usar uma tag de versão como
+`1.3.0` ou `v1.3.0` e conter, por predefinição, o asset
+`PSiptv.v1.3.0.apk`. Se existir apenas um asset `.apk`, esse ficheiro também é
+aceite para manter compatibilidade com Releases antigas.
+
+Os valores predefinidos vêm do repositório atual e podem ser substituídos no
+build sem alterar código:
+
+```powershell
+dotnet publish PSiptv/PSiptv.csproj -c Release -f net10.0-android `
+  -p:GitHubReleaseOwner=errors32 `
+  -p:GitHubReleaseRepository=PSiptv `
+  -p:GitHubReleaseAssetName="PSiptv.v{version}.apk"
+```
+
+Na primeira instalação, o Android pedirá autorização para esta aplicação
+instalar APKs. A atualização mantém os dados se conservar `ApplicationId`, a
+mesma chave de assinatura e um `ApplicationVersion` superior. A funcionalidade
+e a permissão de instalação existem apenas no target Android.
+
 iOS e Mac Catalyst requerem um Mac com Xcode e configuração de assinatura apropriada; não foram validados neste ambiente Windows.
 
 ### Erro Android: «No view found … leftToRight»

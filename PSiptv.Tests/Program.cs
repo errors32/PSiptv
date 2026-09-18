@@ -16,6 +16,20 @@ void Reject(Action action, string label)
     throw new Exception($"FAIL: {label}");
 }
 
+Check(ReleaseVersion.TryParse("v1.3.0", out var release130) &&
+      ReleaseVersion.TryParse("1.2", out var release120) &&
+      release130.CompareTo(release120) > 0,
+    "Versões de Release aceitam prefixo v e componentes em falta");
+Check(ReleaseVersion.TryParse("1.3.0", out var stable130) &&
+      ReleaseVersion.TryParse("1.3.0-rc.2", out var candidate130) &&
+      stable130.CompareTo(candidate130) > 0,
+    "Versões estáveis têm precedência sobre pré-lançamentos");
+Check(ReleaseVersion.TryParse("1.3.0-rc.10+build.7", out var candidate10) &&
+      ReleaseVersion.TryParse("1.3.0-rc.2", out var candidate2) &&
+      candidate10.CompareTo(candidate2) > 0 &&
+      !ReleaseVersion.TryParse("release-final", out _),
+    "Comparação de Release respeita identificadores numéricos e rejeita tags inválidas");
+
 var source = new Uri("https://example.test/lists/main.m3u");
 var playlist = M3uParser.Parse("""
     #EXTM3U x-tvg-url="../guide.xml"

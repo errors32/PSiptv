@@ -41,11 +41,23 @@ public sealed partial class SettingsPage
                         await OpenAccountPageAsync(() => new CustomCategoriesPage());
                 })),
             SettingsSection.Player => BuildPlayerSettings(android),
-            SettingsSection.About => Ui.Stack(
-                ActionRow(FaIcons.Shield, "Política de Privacidade", () => Navigation.PushAsync(new InformationPage(false))),
-                ActionRow(FaIcons.FileLines, "Termos de Uso", () => Navigation.PushAsync(new InformationPage(true)))),
+            SettingsSection.About => BuildAboutSettings(),
             _ => new ContentView()
         };
+    }
+
+    private View BuildAboutSettings()
+    {
+        var items = new List<View>();
+#if ANDROID
+        items.Add(ActionRow(FaIcons.Download, "Atualizações da aplicação",
+            () => Navigation.PushAsync(new AndroidAppUpdatePage())));
+#endif
+        items.Add(ActionRow(FaIcons.Shield, "Política de Privacidade",
+            () => Navigation.PushAsync(new InformationPage(false))));
+        items.Add(ActionRow(FaIcons.FileLines, "Termos de Uso",
+            () => Navigation.PushAsync(new InformationPage(true))));
+        return Ui.Stack([.. items]);
     }
 
     private View BuildGeneralSettings(bool android) =>
