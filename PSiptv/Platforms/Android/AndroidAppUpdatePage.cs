@@ -53,7 +53,7 @@ public sealed class AndroidAppUpdatePage : LocalizedPage
                 automaticRow)),
             Ui.Card(Ui.Stack(
                 Ui.Text("Acesso ao repositório privado", 20),
-                Ui.Text("Use um fine-grained personal access token limitado a este repositório, com Contents: read-only. O token fica no armazenamento seguro deste dispositivo e não é incluído em cópias de segurança.", 13, true),
+                Ui.Text("O token fica no armazenamento seguro deste dispositivo e é incluído em cópias de segurança.", 13, true),
                 token,
                 tokenActions,
                 tokenState)),
