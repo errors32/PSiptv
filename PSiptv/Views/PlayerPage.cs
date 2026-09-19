@@ -15,6 +15,7 @@ public sealed class PlayerPage : LocalizedPage
     private readonly CollectionView programmes = new();
     private readonly Grid guideSection;
     private readonly Grid fullscreenToolbar;
+    private readonly Button fullscreenFocusTarget;
     private readonly Grid channelMenu;
     private readonly CollectionView fullscreenChannels;
     private readonly IReadOnlyList<MediaItem> queue;
@@ -159,7 +160,7 @@ public sealed class PlayerPage : LocalizedPage
         channelMenu.Add(menuHeader);
         channelMenu.Add(fullscreenChannels, 0, 1);
 
-        var minimize = IconButton(FaIcons.Compress, "Sair do ecrã inteiro", () =>
+        fullscreenFocusTarget = IconButton(FaIcons.Compress, "Sair do ecrã inteiro", () =>
         {
             SetFullscreen(false);
             return Task.CompletedTask;
@@ -183,7 +184,7 @@ public sealed class PlayerPage : LocalizedPage
             VerticalOptions = LayoutOptions.Start,
             ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)]
         };
-        fullscreenToolbar.Add(minimize);
+        fullscreenToolbar.Add(fullscreenFocusTarget);
         fullscreenToolbar.Add(castFullscreen, 1);
         fullscreenToolbar.Add(changeChannel, 2);
 
@@ -360,7 +361,14 @@ public sealed class PlayerPage : LocalizedPage
     private void UpdateFullscreenOverlay()
     {
         var pip = PictureInPictureService.IsActive;
-        fullscreenToolbar.IsVisible = fullscreen && !pip && player.AreControlsVisible && !channelMenu.IsVisible;
+        var showFullscreenToolbar = fullscreen && !pip && player.AreControlsVisible && !channelMenu.IsVisible;
+        var focusToolbar = Ui.IsTelevision && showFullscreenToolbar && !fullscreenToolbar.IsVisible;
+        fullscreenToolbar.IsVisible = showFullscreenToolbar;
+        if (focusToolbar)
+            Dispatcher.Dispatch(() =>
+            {
+                if (fullscreenToolbar.IsVisible) fullscreenFocusTarget.Focus();
+            });
     }
 
     private void CloseChannelMenu()

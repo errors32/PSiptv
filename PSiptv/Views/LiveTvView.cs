@@ -34,6 +34,7 @@ public sealed class LiveTvView : ContentView
     private readonly Grid channelMenu;
     private readonly Button channelMenuButton;
     private readonly Grid fullscreenToolbar;
+    private readonly Button fullscreenFocusTarget;
     private readonly Button maximize;
     private readonly Grid controls;
     private readonly Button viewModeButton;
@@ -50,7 +51,7 @@ public sealed class LiveTvView : ContentView
     public LiveTvView()
     {
         player.UseStretchToViewport();
-        player.SetPreviewMode(Ui.IsTelevision);
+        player.SetPreviewMode(true);
         channels = new CollectionView
         {
             SelectionMode = SelectionMode.Single,
@@ -134,32 +135,14 @@ public sealed class LiveTvView : ContentView
         channelName.TextColor = Colors.White;
         channelName.MaxLines = 1;
         channelName.LineBreakMode = LineBreakMode.TailTruncation;
-        var cast = Ui.Button("", async () =>
-        {
-            var page = FindPage();
-            if (page is not null) await ScreenSharingService.ChooseAsync(page, CurrentItem, player.Pause);
-        });
-        cast.ImageSource = Ui.FontIconSource(FaIcons.Chromecast, 22, "FontAwesomeFreeBrands");
-        cast.Padding = 10;
-        SemanticProperties.SetDescription(cast, LanguageService.Text("Partilhar ecrã"));
         maximize = Ui.Button("", () => { SetFullscreen(!IsFullscreen); return Task.CompletedTask; });
         maximize.ImageSource = Ui.FontIconSource(FaIcons.Expand, 22);
         maximize.Padding = 10;
         SemanticProperties.SetDescription(maximize, LanguageService.Text("Maximizar ecrã"));
-        if (Ui.IsTelevision)
-        {
-            controls.HorizontalOptions = LayoutOptions.End;
-            maximize.Text = LanguageService.Text("Abrir em ecrã inteiro");
-            maximize.ContentLayout = new Button.ButtonContentLayout(Button.ButtonContentLayout.ImagePosition.Left, 8);
-            controls.Add(maximize);
-        }
-        else
-        {
-            controls.ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Auto)];
-            controls.Add(Ui.Stack(channelName, message));
-            controls.Add(cast, 1);
-            controls.Add(maximize, 2);
-        }
+        controls.ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)];
+        channelName.IsVisible = false;
+        controls.Add(channelName);
+        controls.Add(maximize, 1);
         video.Add(controls);
 
         var closeMenu = Ui.Button("", () => { CloseChannelMenu(); return Task.CompletedTask; });
@@ -200,7 +183,7 @@ public sealed class LiveTvView : ContentView
         channelMenuButton.WidthRequest = 48;
         channelMenuButton.IsVisible = false;
         SemanticProperties.SetDescription(channelMenuButton, LanguageService.Text("Abrir canais da categoria"));
-        var exitFullscreen = FullscreenButton(FaIcons.Compress, "Sair do ecrã inteiro", () =>
+        fullscreenFocusTarget = FullscreenButton(FaIcons.Compress, "Sair do ecrã inteiro", () =>
         {
             SetFullscreen(false);
             return Task.CompletedTask;
@@ -219,7 +202,7 @@ public sealed class LiveTvView : ContentView
             VerticalOptions = LayoutOptions.Start,
             ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)]
         };
-        fullscreenToolbar.Add(exitFullscreen);
+        fullscreenToolbar.Add(fullscreenFocusTarget);
         fullscreenToolbar.Add(castFullscreen, 1);
         fullscreenToolbar.Add(channelMenuButton, 2);
         video.Add(fullscreenToolbar);
@@ -328,6 +311,7 @@ public sealed class LiveTvView : ContentView
         player.Stop();
         CurrentItem = null;
         channelName.Text = "TV ao Vivo";
+        channelName.IsVisible = false;
         message.Text = "Escolha um canal para reproduzir";
         await page.Navigation.PushAsync(new MultiviewPage(available, initial));
     }
@@ -362,9 +346,16 @@ public sealed class LiveTvView : ContentView
 
     private void UpdatePlaybackControlsVisibility(bool visible)
     {
-        controls.IsVisible = !IsPictureInPicture && !IsFullscreen && (Ui.IsTelevision || visible);
+        controls.IsVisible = !IsPictureInPicture && !IsFullscreen;
         channelMenuButton.IsVisible = fullscreenChannels.ItemsSource is not null;
-        fullscreenToolbar.IsVisible = visible && IsFullscreen && !IsPictureInPicture && !channelMenu.IsVisible;
+        var showFullscreenToolbar = visible && IsFullscreen && !IsPictureInPicture && !channelMenu.IsVisible;
+        var focusToolbar = Ui.IsTelevision && showFullscreenToolbar && !fullscreenToolbar.IsVisible;
+        fullscreenToolbar.IsVisible = showFullscreenToolbar;
+        if (focusToolbar)
+            Dispatcher.Dispatch(() =>
+            {
+                if (fullscreenToolbar.IsVisible) fullscreenFocusTarget.Focus();
+            });
     }
 
     private static Button FullscreenButton(string icon, string description, Func<Task> action,
@@ -383,6 +374,7 @@ public sealed class LiveTvView : ContentView
         if (AppServices.ActiveAccount is null) return;
         CurrentItem = item;
         channelName.Text = item.Name;
+        channelName.IsVisible = true;
         message.Text = "A ligar à transmissão…";
         await player.PlayAsync(item);
     }
@@ -395,6 +387,7 @@ public sealed class LiveTvView : ContentView
         CurrentItem = null;
 
         channelName.Text = "TV ao Vivo";
+        channelName.IsVisible = false;
         message.Text = "Escolha um canal para reproduzir";
         SetFullscreen(false);
     }
@@ -405,7 +398,7 @@ public sealed class LiveTvView : ContentView
     {
         if (value == IsFullscreen) return;
         IsFullscreen = value;
-        if (Ui.IsTelevision) player.SetPreviewMode(!value);
+        player.SetPreviewMode(!value);
         if (!value) channelMenu.IsVisible = false;
         maximize.ImageSource = Ui.FontIconSource(value ? FaIcons.Compress : FaIcons.Expand, 22);
         SemanticProperties.SetDescription(maximize, LanguageService.Text(value ? "Sair do ecrã inteiro" : "Maximizar ecrã"));
