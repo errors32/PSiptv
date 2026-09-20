@@ -24,6 +24,17 @@ public static class BrowserStreamDetection
                query.Contains("type=mpd", StringComparison.OrdinalIgnoreCase);
     }
 
+    public static bool IsMediaContentType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var contentType = value.Split(';', 2)[0].Trim();
+        return contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ||
+               contentType.Equals("application/vnd.apple.mpegurl", StringComparison.OrdinalIgnoreCase) ||
+               contentType.Equals("application/x-mpegurl", StringComparison.OrdinalIgnoreCase) ||
+               contentType.Equals("application/dash+xml", StringComparison.OrdinalIgnoreCase) ||
+               contentType.Equals("application/vnd.ms-sstr+xml", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static int Priority(string value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return 0;
