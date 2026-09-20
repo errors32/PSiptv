@@ -4,7 +4,10 @@
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-  <application android:label="PSiptv Remote" android:theme="@android:style/Theme.Material.NoActionBar" android:usesCleartextTraffic="true">
-    <meta-data android:name="com.google.android.wearable.standalone" android:value="true" />
+  <application android:label="PSiptv Remote" android:icon="@drawable/app_icon" android:roundIcon="@drawable/app_icon"
+      android:theme="@android:style/Theme.Material.NoActionBar" android:usesCleartextTraffic="true"
+      android:allowBackup="false" android:supportsRtl="true">
+    <!-- The watch is intentionally only a remote for PSiptv on another device. -->
+    <meta-data android:name="com.google.android.wearable.standalone" android:value="false" />
   </application>
 </manifest>

@@ -16,7 +16,6 @@ public sealed class MainActivity : Activity
     private readonly List<RemoteChannel> channels = [];
     private CancellationTokenSource? lifetime;
     private TextView status = null!;
-    private TextView context = null!;
     private Spinner devicePicker = null!;
     private SeekBar volume = null!;
     private ListView channelList = null!;
@@ -52,43 +51,47 @@ public sealed class MainActivity : Activity
     {
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetGravity(GravityFlags.CenterHorizontal);
-        root.SetPadding(Dp(12), Dp(10), Dp(12), Dp(8));
+        root.SetPadding(Dp(10), Dp(6), Dp(10), Dp(6));
         root.SetBackgroundColor(Color.Rgb(15, 23, 44));
 
-        var title = Label("PSiptv", 20, Color.White);
-        title.Gravity = GravityFlags.Center;
-        root.AddView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(34)));
+        var header = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+        var title = Label("PSiptv Remote", 18, Color.White);
+        title.SetTypeface(null, Android.Graphics.TypefaceStyle.Bold);
+        header.AddView(title, new LinearLayout.LayoutParams(0, Dp(36), 1));
+        var refresh = new Button(this) { Text = "↻", ContentDescription = "Procurar dispositivos" };
+        refresh.SetAllCaps(false);
+        refresh.SetTextColor(Color.White);
+        refresh.SetTextSize(Android.Util.ComplexUnitType.Sp, 20);
+        refresh.Click += async (_, _) => await DiscoverAsync(lifetime?.Token ?? CancellationToken.None);
+        header.AddView(refresh, new LinearLayout.LayoutParams(Dp(44), Dp(36)));
+        root.AddView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(36)));
 
-        status = Label("A procurar dispositivos…", 12, Color.Rgb(148, 163, 184));
+        status = Label("A procurar PSiptv no Wi-Fi…", 11, Color.Rgb(148, 163, 184));
         status.Gravity = GravityFlags.Center;
-        root.AddView(status, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(28)));
+        status.SetLines(2);
+        root.AddView(status, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(34)));
 
         deviceAdapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerDropDownItem, []);
-        devicePicker = new Spinner(this) { Adapter = deviceAdapter };
+        devicePicker = new Spinner(this) { Adapter = deviceAdapter, Visibility = ViewStates.Gone };
         devicePicker.ItemSelected += async (_, e) =>
         {
             if (e.Position < 0 || e.Position >= devices.Count) return;
             selectedDevice = devices[e.Position];
             await RefreshStateAsync(lifetime?.Token ?? CancellationToken.None);
         };
-        root.AddView(devicePicker, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(42)));
+        root.AddView(devicePicker, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(36)));
 
-        var search = new Button(this) { Text = "Procurar novamente" };
-        search.SetAllCaps(false);
-        search.SetTextColor(Color.White);
-        search.Click += async (_, _) => await DiscoverAsync(lifetime?.Token ?? CancellationToken.None);
-        root.AddView(search, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(42)));
-
-        context = Label("Abra o PSiptv no dispositivo de destino", 12, Color.White);
-        context.Gravity = GravityFlags.Center;
-        root.AddView(context, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(36)));
-
+        var volumeRow = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+        volumeRow.SetGravity(GravityFlags.CenterVertical);
+        var volumeLabel = Label("Vol.", 12, Color.White);
+        volumeRow.AddView(volumeLabel, new LinearLayout.LayoutParams(Dp(34), Dp(38)));
         volume = new SeekBar(this) { Max = 100, Progress = 100, ContentDescription = "Volume da aplicação" };
         volume.StopTrackingTouch += async (_, _) =>
         {
             if (!updatingVolume) await SendCommandAsync("volume", volume.Progress.ToString());
         };
-        root.AddView(volume, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(38)));
+        volumeRow.AddView(volume, new LinearLayout.LayoutParams(0, Dp(38), 1));
+        root.AddView(volumeRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(38)));
 
         channelAdapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleListItem1, []);
         channelList = new ListView(this) { Adapter = channelAdapter, DividerHeight = 1 };
@@ -133,6 +136,7 @@ public sealed class MainActivity : Activity
                 if (index < 0) index = 0;
                 selectedDevice = devices.Count == 0 ? null : devices[index];
                 if (devices.Count > 0) devicePicker.SetSelection(index);
+                devicePicker.Visibility = devices.Count > 1 ? ViewStates.Visible : ViewStates.Gone;
                 status.Text = devices.Count == 0 ? "Nenhum PSiptv encontrado" : $"{devices.Count} dispositivo(s)";
             });
             if (selectedDevice is not null) await RefreshStateAsync(cancellationToken);
@@ -159,8 +163,7 @@ public sealed class MainActivity : Activity
 
     private void ApplyState(RemoteControlState state) => RunOnUiThread(() =>
     {
-        status.Text = state.DeviceName;
-        context.Text = $"{state.ActiveTab} · {state.Category}";
+        status.Text = $"{state.DeviceName}\n{state.ActiveTab} · {state.Category}";
         updatingVolume = true;
         volume.Progress = Math.Clamp(state.Volume, 0, 100);
         updatingVolume = false;

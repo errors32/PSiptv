@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <automotiveApp xmlns:tools="http://schemas.android.com/tools">
+    <!-- Android Auto discovers PSiptv through its MediaBrowserService. -->
+    <uses name="media" tools:ignore="InvalidUsesTagAttribute" />
+    <!-- Keep the parked video experience on Android Automotive OS. -->
     <uses name="video" tools:ignore="InvalidUsesTagAttribute" />
 </automotiveApp>

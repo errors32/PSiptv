@@ -39,7 +39,9 @@
 		     increase for every package distributed to an existing installation. -->
 		<!-- Generate a monotonically increasing Android-compatible build number
 		     from the current UTC time (minutes since the Unix epoch). -->
-		<ApplicationVersion>$([MSBuild]::Divide($([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()), 60))</ApplicationVersion>
+		<!-- Suffix 1 reserves distinct version codes for the phone/TV artifact;
+		     the Wear OS artifact uses suffix 2 in the same Play listing. -->
+		<ApplicationVersion>$([MSBuild]::Add($([MSBuild]::Multiply($([MSBuild]::Divide($([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()), 60)), 10)), 1))</ApplicationVersion>
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
 		<WindowsPackageType>None</WindowsPackageType>

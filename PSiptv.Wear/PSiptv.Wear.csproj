@@ -4,14 +4,35 @@
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <ApplicationId>com.PS.PSiptv.wear</ApplicationId>
+    <!-- Use the same package as the phone app so Google Play can deliver this
+         as the Wear OS form factor of PSiptv. The watch hardware feature in
+         the manifest keeps this APK off phones and tablets. -->
+    <ApplicationId>com.PS.PSiptv</ApplicationId>
     <ApplicationTitle>PSiptv Remote</ApplicationTitle>
-    <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
-    <RuntimeIdentifiers>android-arm;android-arm64;android-x64</RuntimeIdentifiers>
+    <!-- Phone and watch builds need distinct, increasing version codes when
+         they share a Play listing. Suffix 2 identifies the Wear artifact. -->
+    <ApplicationVersion>$([MSBuild]::Add($([MSBuild]::Multiply($([MSBuild]::Divide($([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()), 60)), 10)), 2))</ApplicationVersion>
+    <ApplicationDisplayVersion>1.3.4</ApplicationDisplayVersion>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifiers>android-arm;android-arm64;android-x86;android-x64</RuntimeIdentifiers>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\PSiptv.Core\PSiptv.Core.csproj" />
   </ItemGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <AndroidPackageFormats>apk</AndroidPackageFormats>
+    <AndroidKeyStore>true</AndroidKeyStore>
+    <AndroidSigningKeyStore Condition="'$(AndroidSigningKeyStore)' == ''">$(PSIPTV_ANDROID_KEYSTORE)</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias Condition="'$(AndroidSigningKeyAlias)' == ''">$(PSIPTV_ANDROID_KEY_ALIAS)</AndroidSigningKeyAlias>
+    <AndroidSigningKeyPass Condition="'$(AndroidSigningKeyPass)' == ''">$(PSIPTV_ANDROID_KEY_PASSWORD)</AndroidSigningKeyPass>
+    <AndroidSigningStorePass Condition="'$(AndroidSigningStorePass)' == ''">$(PSIPTV_ANDROID_STORE_PASSWORD)</AndroidSigningStorePass>
+  </PropertyGroup>
+  <Target Name="ValidateAndroidReleaseSigning" BeforeTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <Error Condition="'$(AndroidSigningKeyStore)' == '' or !Exists('$(AndroidSigningKeyStore)')"
+           Text="Wear OS Release requires the same stable signing keystore as the phone app. Set PSIPTV_ANDROID_KEYSTORE (or AndroidSigningKeyStore)." />
+    <Error Condition="'$(AndroidSigningKeyAlias)' == ''"
+           Text="Wear OS Release requires PSIPTV_ANDROID_KEY_ALIAS (or AndroidSigningKeyAlias)." />
+    <Error Condition="'$(AndroidSigningKeyPass)' == '' or '$(AndroidSigningStorePass)' == ''"
+           Text="Wear OS Release requires PSIPTV_ANDROID_KEY_PASSWORD and PSIPTV_ANDROID_STORE_PASSWORD." />
+  </Target>
 </Project>
