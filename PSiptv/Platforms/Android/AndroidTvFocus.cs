@@ -3,6 +3,7 @@ using Android.Content;
 using Android.Views;
 using Android.Views.InputMethods;
 using Android.Widget;
+using AndroidX.Core.View;
 using PSiptv.Views;
 using NativeView = Android.Views.View;
 
@@ -137,6 +138,8 @@ internal static class AndroidTvFocus
     {
         private readonly NativeView host;
         private readonly EditText? editor;
+        private bool keyboardWasVisible;
+        private bool monitoringKeyboard;
 
         internal TextInputBridge(NativeView view)
         {
@@ -189,7 +192,48 @@ internal static class AndroidTvFocus
                 if (!editor.HasFocus || !editor.IsShown) return;
                 var input = editor.Context?.GetSystemService(Context.InputMethodService) as InputMethodManager;
                 input?.ShowSoftInput(editor, ShowFlags.Implicit);
+                MonitorKeyboardVisibility();
             });
+        }
+
+        private void MonitorKeyboardVisibility()
+        {
+            if (editor is null || monitoringKeyboard) return;
+            monitoringKeyboard = true;
+            editor.Post(CheckKeyboardVisibility);
+        }
+
+        private void CheckKeyboardVisibility()
+        {
+            if (editor is null || !editor.IsAttachedToWindow || !editor.HasFocus)
+            {
+                keyboardWasVisible = false;
+                monitoringKeyboard = false;
+                return;
+            }
+
+            var keyboardVisible = ViewCompat.GetRootWindowInsets(editor)?
+                .IsVisible(WindowInsetsCompat.Type.Ime()) == true;
+            if (keyboardVisible)
+            {
+                keyboardWasVisible = true;
+            }
+            else if (keyboardWasVisible)
+            {
+                // Android deliberately keeps an EditText focused when Back closes
+                // the IME. On a television that traps subsequent D-pad input in
+                // the editor, so explicitly return focus to the form.
+                keyboardWasVisible = false;
+                monitoringKeyboard = false;
+                var next = editor.FocusSearch(FocusSearchDirection.Down)
+                    ?? editor.FocusSearch(FocusSearchDirection.Up);
+                editor.ClearFocus();
+                if (!ReferenceEquals(host, editor)) host.ClearFocus();
+                next?.RequestFocus();
+                return;
+            }
+
+            editor.PostDelayed(CheckKeyboardVisibility, 100);
         }
     }
 }
