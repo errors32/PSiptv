@@ -9,7 +9,10 @@ namespace PSiptv.Views;
 
 public sealed class BrowserView : ContentView
 {
-    private readonly Microsoft.Maui.Controls.WebView web = new();
+    private Microsoft.Maui.Controls.WebView web;
+    private readonly Grid webHost = new();
+    private readonly HorizontalStackLayout tabStrip = new() { Spacing = 5 };
+    private readonly List<BrowserTab> tabs = [];
     private readonly Picker sources = new() { Title = "Escolher fonte" };
     private readonly Entry address = new()
     {
@@ -29,12 +32,16 @@ public sealed class BrowserView : ContentView
     private string detectedCookie = "";
     private bool detectingStream;
     private bool refreshing;
+    private bool browserActivated;
 #if ANDROID
-    private bool blockerAttached;
+    private readonly HashSet<Android.Webkit.WebView> attachedNativeWebViews = [];
 #endif
 
     public BrowserView()
     {
+        web = CreateWebView();
+        tabs.Add(new BrowserTab(web, "Principal"));
+        webHost.Add(web);
         sources.SetDynamicResource(Picker.TextColorProperty, "Ink");
         var back = BrowserButton(FaIcons.ChevronLeft, () => { GoBack(); return Task.CompletedTask; }, "Voltar");
         var forward = BrowserButton(FaIcons.ChevronRight, () => { GoForward(); return Task.CompletedTask; }, "Avançar");
@@ -45,19 +52,17 @@ public sealed class BrowserView : ContentView
         playStream.IsEnabled = false;
         SemanticProperties.SetDescription(external, LanguageService.Text("Abrir num browser externo"));
         ToolTipProperties.SetText(external, "Abrir num browser externo");
-        var shield = Ui.FontIcon(FaIcons.Shield, 20);
-        SemanticProperties.SetDescription(shield, LanguageService.Text("Bloqueador de publicidade e popups ativo"));
         var toolbar = new Grid
         {
             ColumnSpacing = 6,
-            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)]
+            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)]
         };
         toolbar.Add(back); toolbar.Add(forward, 1); toolbar.Add(sources, 2); toolbar.Add(playStream, 3);
-        toolbar.Add(external, 4); toolbar.Add(shield, 5); toolbar.Add(reload, 6);
+        toolbar.Add(external, 4); toolbar.Add(reload, 5);
         var grid = new Grid
         {
             RowSpacing = 4,
-            RowDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Star)]
+            RowDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Star)]
         };
         var addressBar = new Grid
         {
@@ -70,8 +75,15 @@ public sealed class BrowserView : ContentView
         // Keep free-form URL entry available on touch/keyboard devices without
         // spending a full row of the television viewport on it.
         addressBar.IsVisible = !Ui.IsTelevision;
-        grid.Add(toolbar); grid.Add(addressBar, 0, 1); grid.Add(web, 0, 2);
+        var tabsScroll = new ScrollView
+        {
+            Orientation = ScrollOrientation.Horizontal,
+            Content = tabStrip,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Never
+        };
+        grid.Add(toolbar); grid.Add(tabsScroll, 0, 1); grid.Add(addressBar, 0, 2); grid.Add(webHost, 0, 3);
         Content = grid;
+        RefreshTabStrip();
         address.SetDynamicResource(Entry.TextColorProperty, "Ink");
         address.SetDynamicResource(Entry.PlaceholderColorProperty, "Muted");
         address.Completed += (_, _) => _ = NavigateAddressAsync();
@@ -81,21 +93,6 @@ public sealed class BrowserView : ContentView
             var saved = BrowserSourcesService.Sources;
             if (sources.SelectedIndex < saved.Count) Open(saved[sources.SelectedIndex]);
         };
-        web.Navigating += (_, e) =>
-        {
-            address.Text = e.Url;
-            ResetStreamDetection();
-            ObserveStream(e.Url);
-        };
-        web.Navigated += (_, e) =>
-        {
-            address.Text = e.Url;
-            ObserveStream(e.Url);
-            _ = DetectStreamAsync();
-        };
-#if ANDROID
-        web.HandlerChanged += (_, _) => AttachAndroidBlocker();
-#endif
         BrowserSourcesService.Changed += RefreshSources;
         streamDetector = Dispatcher.CreateTimer();
         streamDetector.Interval = TimeSpan.FromSeconds(2);
@@ -103,10 +100,129 @@ public sealed class BrowserView : ContentView
         {
             if (IsVisible) await DetectStreamAsync();
         };
-        Loaded += (_, _) => streamDetector.Start();
+        Loaded += (_, _) =>
+        {
+#if ANDROID
+            // HandlerChanged can run before this view subscribes to it. Always
+            // verify the native client when the browser becomes visible.
+            AttachAndroidBrowser(web);
+#endif
+            streamDetector.Start();
+        };
         Unloaded += (_, _) => streamDetector.Stop();
         ResetStreamDetection();
         RotateSources();
+    }
+
+    private Microsoft.Maui.Controls.WebView CreateWebView()
+    {
+        var browser = new Microsoft.Maui.Controls.WebView();
+        browser.Navigating += (_, e) =>
+        {
+            if (!ReferenceEquals(browser, web)) return;
+            address.Text = e.Url;
+            ResetStreamDetection();
+            ObserveStream(browser, e.Url);
+            UpdateTabTitle(browser, e.Url);
+        };
+        browser.Navigated += (_, e) =>
+        {
+            if (!ReferenceEquals(browser, web)) return;
+            address.Text = e.Url;
+            ObserveStream(browser, e.Url);
+            UpdateTabTitle(browser, e.Url);
+            _ = DetectStreamAsync();
+        };
+#if ANDROID
+        browser.HandlerChanged += (_, _) => AttachAndroidBrowser(browser);
+#endif
+        return browser;
+    }
+
+    private void OpenPopupTab(string? value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return;
+        Dispatcher.Dispatch(() =>
+        {
+            var browser = CreateWebView();
+            tabs.Add(new BrowserTab(browser, uri.Host));
+            webHost.Add(browser);
+            ActivateTab(browser);
+            browser.Source = uri.AbsoluteUri;
+        });
+    }
+
+    private void ActivateTab(Microsoft.Maui.Controls.WebView browser)
+    {
+        foreach (var tab in tabs) tab.WebView.IsVisible = ReferenceEquals(tab.WebView, browser);
+        web = browser;
+        address.Text = CurrentPageUrl();
+        ResetStreamDetection();
+        RefreshTabStrip();
+#if ANDROID
+        AttachAndroidBrowser(browser);
+#endif
+        _ = DetectStreamAsync();
+    }
+
+    private void CloseTab(Microsoft.Maui.Controls.WebView browser)
+    {
+        if (tabs.Count <= 1) return;
+        var index = tabs.FindIndex(tab => ReferenceEquals(tab.WebView, browser));
+        if (index < 0) return;
+        var wasActive = ReferenceEquals(browser, web);
+        var closing = tabs[index].WebView;
+        tabs.RemoveAt(index);
+        webHost.Remove(closing);
+#if ANDROID
+        if (closing.Handler?.PlatformView is Android.Webkit.WebView native)
+        {
+            attachedNativeWebViews.Remove(native);
+            native.StopLoading();
+        }
+#endif
+        if (wasActive) ActivateTab(tabs[Math.Max(0, index - 1)].WebView);
+        else RefreshTabStrip();
+    }
+
+    private void UpdateTabTitle(Microsoft.Maui.Controls.WebView browser, string? value)
+    {
+        var tab = tabs.FirstOrDefault(item => ReferenceEquals(item.WebView, browser));
+        if (tab is null) return;
+        tab.Title = Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Host.Length > 0 ? uri.Host : "Nova tab";
+        RefreshTabStrip();
+    }
+
+    private void RefreshTabStrip()
+    {
+        tabStrip.Clear();
+        foreach (var tab in tabs)
+        {
+            var selected = ReferenceEquals(tab.WebView, web);
+            var tabButton = Ui.Button(tab.Title, () => { ActivateTab(tab.WebView); return Task.CompletedTask; });
+            tabButton.FontSize = 12;
+            tabButton.Padding = new Thickness(10, 4);
+            tabButton.Opacity = selected ? 1 : 0.65;
+            if (ReferenceEquals(tab, tabs[0]))
+            {
+                tabStrip.Add(tabButton);
+                continue;
+            }
+            var close = Ui.Button("×", () => { CloseTab(tab.WebView); return Task.CompletedTask; });
+            close.FontSize = 16;
+            close.Padding = new Thickness(7, 2);
+            close.WidthRequest = 34;
+            SemanticProperties.SetDescription(close, LanguageService.Text("Fechar separador"));
+            ToolTipProperties.SetText(close, LanguageService.Text("Fechar separador"));
+            var tabGroup = new HorizontalStackLayout { Spacing = 1, Children = { tabButton, close } };
+            tabStrip.Add(tabGroup);
+        }
+    }
+
+    private sealed class BrowserTab(Microsoft.Maui.Controls.WebView webView, string title)
+    {
+        public Microsoft.Maui.Controls.WebView WebView { get; } = webView;
+        public string Title { get; set; } = title;
     }
 
     private static Button BrowserButton(string glyph, Func<Task> action, string description)
@@ -123,7 +239,11 @@ public sealed class BrowserView : ContentView
     public void Activate()
     {
         RefreshSources();
-        if (BrowserSourcesService.Default is { } source) Open(source);
+        if (!browserActivated && BrowserSourcesService.Default is { } source)
+        {
+            browserActivated = true;
+            Open(source);
+        }
     }
 
     private void RefreshSources() => Dispatcher.Dispatch(RotateSources);
@@ -329,7 +449,7 @@ public sealed class BrowserView : ContentView
         playStream.Opacity = 0.4;
     }
 
-    private void ObserveStream(string? value, bool trustedMediaElement = false,
+    private void ObserveStream(Microsoft.Maui.Controls.WebView browser, string? value, bool trustedMediaElement = false,
         string? referer = null, string? userAgent = null, string? cookie = null)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
@@ -339,6 +459,7 @@ public sealed class BrowserView : ContentView
         priority = Math.Max(priority, 1);
         Dispatcher.Dispatch(() =>
         {
+            if (!ReferenceEquals(browser, web)) return;
             if (priority < detectedPriority) return;
             detectedStream = uri.AbsoluteUri;
             detectedPriority = priority;
@@ -358,7 +479,7 @@ public sealed class BrowserView : ContentView
         {
             var result = await web.EvaluateJavaScriptAsync(StreamDetectionScript);
             var candidate = DecodeJavaScriptString(result);
-            if (candidate.Length > 0) ObserveStream(candidate, trustedMediaElement: true);
+            if (candidate.Length > 0) ObserveStream(web, candidate, trustedMediaElement: true);
         }
         catch (Exception) { /* Navigation can replace the JavaScript context while it is being inspected. */ }
         finally { detectingStream = false; }
@@ -381,34 +502,45 @@ public sealed class BrowserView : ContentView
     }
 
 #if ANDROID
-    private void AttachAndroidBlocker()
+    private void AttachAndroidBrowser(Microsoft.Maui.Controls.WebView browser)
     {
-        if (blockerAttached || web.Handler?.PlatformView is not Android.Webkit.WebView native) return;
-        blockerAttached = true;
-        native.Settings.SetSupportMultipleWindows(false);
-        native.Settings.JavaScriptCanOpenWindowsAutomatically = false;
+        if (browser.Handler?.PlatformView is not Android.Webkit.WebView native ||
+            !attachedNativeWebViews.Add(native)) return;
+        native.Settings.SetSupportMultipleWindows(true);
+        native.Settings.JavaScriptCanOpenWindowsAutomatically = true;
         CookieManager.Instance?.SetAcceptThirdPartyCookies(native, false);
-        native.SetWebChromeClient(new PopupBlockingChromeClient());
-        native.SetWebViewClient(new BlockingWebViewClient(this));
+        native.SetWebChromeClient(new TabbedChromeClient(this));
+        native.SetWebViewClient(new BlockingWebViewClient(this, browser));
+        // HLS/P2P players (including dlive.sx's embedded player) can fetch the
+        // manifest from a service worker. Those requests bypass WebViewClient.
+        ServiceWorkerController.Instance?.SetServiceWorkerClient(new BrowserServiceWorkerClient(this));
     }
 
-    private void PageStarted(Android.Webkit.WebView view, string? url)
+    private void PageStarted(Microsoft.Maui.Controls.WebView browser, Android.Webkit.WebView view, string? url)
     {
+        if (!ReferenceEquals(browser, web)) return;
         Dispatcher.Dispatch(() =>
         {
             address.Text = url ?? "";
             ResetStreamDetection();
-            ObserveStream(url);
+            ObserveStream(browser, url);
+            UpdateTabTitle(browser, url);
         });
         view.EvaluateJavascript(AdHidingScript, null);
+        // Install the network hooks before the page player requests its manifest.
+        // Running this only after OnPageFinished misses short-lived fetch/XHR calls,
+        // especially when the player exposes only a blob: URL on the video element.
+        view.EvaluateJavascript(StreamDetectionScript, null);
     }
 
-    private void PageFinished(Android.Webkit.WebView view, string? url)
+    private void PageFinished(Microsoft.Maui.Controls.WebView browser, Android.Webkit.WebView view, string? url)
     {
+        if (!ReferenceEquals(browser, web)) return;
         Dispatcher.Dispatch(() =>
         {
             address.Text = url ?? "";
-            ObserveStream(url);
+            ObserveStream(browser, url);
+            UpdateTabTitle(browser, url);
             _ = DetectStreamAsync();
         });
         view.EvaluateJavascript(AdHidingScript, null);
@@ -457,7 +589,9 @@ public sealed class BrowserView : ContentView
         "/ads/", "/ad/", "/advert/", "/adverts/", "/advertising/", "/adserver/", "/adserve/",
         "/banner-ad", "/banner_ads", "/popunder", "/popup-ad", "/prebid", "/pagead/",
         "/vast/", "/vpaid/", "/outstream/", "/instream/", "adsbygoogle", "googletag",
-        "google-ima", "ima3.js", "pubads_", "adservice.", "adserver."
+        "google-ima", "ima3.js", "pubads_", "adservice.", "adserver.",
+        "adjango.min.js", "esha.css", "cookiejar.min.js", "urollbar.min.css", "tag.min.js",
+        "/layla-sw.js", "/api/subscribe"
     ];
 
     private static readonly string[] BlockedHosts =
@@ -478,7 +612,11 @@ public sealed class BrowserView : ContentView
         "optimizely.com", "outbrainimg.com", "parsely.com", "perfectaudience.com", "pubmatic.com",
         "quantcount.com", "rubiconproject.com", "segment.com", "sharethrough.com", "smartadserver.com",
         "smaato.net", "spotxchange.com", "statcounter.com", "stickyadstv.com", "teads.tv",
-        "tradedoubler.com", "triplelift.com", "undertone.com", "yieldmo.com", "zedo.com"
+        "tradedoubler.com", "triplelift.com", "undertone.com", "yieldmo.com", "zedo.com",
+        "piousshiners.com", "xadsmart.com", "d11enq2rymy0yl.cloudfront.net",
+        "bkmknxqk.com", "dxhrbqrt.com", "profitableratecpmnetwork.com", "burstyflavia.com",
+        "llvpn.com", "intellipopup.com", "clypeiescapes.com", "xstats.st", "histats.com",
+        "tuffoonaskant.com", "reliedhounder.com", "duotypesleeted.com", "layla.wtf"
     ];
 
     private const string AdHidingScript = """
@@ -488,8 +626,6 @@ public sealed class BrowserView : ContentView
             return;
           }
           window.__psiptvAdBlockInstalled = true;
-          const blockedOpen = () => null;
-          try { window.open = blockedOpen; } catch (_) {}
 
           const selectors = [
             '[id="ad"]', '[id^="ad-"]', '[id^="ad_"]', '[id*="-ad-"]', '[id*="_ad_"]',
@@ -497,10 +633,12 @@ public sealed class BrowserView : ContentView
             '[class="ad"]', '[class^="ad-"]', '[class^="ad_"]', '[class*=" ad-"]',
             '[class*=" ad_"]', '[class*=" ads-"]', '[class*=" ads_"]', '[class*="advert"]',
             '[class*="banner-ad"]', '[class*="banner_ad"]', '[class*="commercial"]',
-            '[class*="popunder"]', '[class*="sponsor"]', '.adsbox', '.adbox', '.ad-slot',
+            '[class*="popunder"]', '[class*="sponsor"]', '[class*="site-ad"]',
+            '[style*="z-index:2147483647"]', '.adsbox', '.adbox', '.ad-slot',
             '.ad-container', '.ad-wrapper', '.ad-banner', '.advertisement', '.google-auto-placed',
             '[aria-label*="advertisement" i]', '[aria-label*="publicidade" i]',
             '[data-ad]', '[data-ad-id]', '[data-ad-slot]', '[data-google-query-id]',
+            '#ss-popunder-script', '#ss-shufflebox-script',
             'ins.adsbygoogle', 'amp-ad', 'amp-auto-ads', 'video-ads',
             'iframe[id^="google_ads"]', 'iframe[name^="google_ads"]',
             'iframe[src*="doubleclick"]', 'iframe[src*="googlesyndication"]',
@@ -547,17 +685,52 @@ public sealed class BrowserView : ContentView
         })();
         """;
 
-    private sealed class PopupBlockingChromeClient : WebChromeClient
+    private sealed class TabbedChromeClient(BrowserView owner) : WebChromeClient
     {
-        public override bool OnCreateWindow(Android.Webkit.WebView? view, bool isDialog, bool isUserGesture, Android.OS.Message? resultMsg) => false;
+        public override bool OnCreateWindow(Android.Webkit.WebView? view, bool isDialog, bool isUserGesture,
+            Android.OS.Message? resultMsg)
+        {
+            if (view?.Context is null || resultMsg?.Obj is not Android.Webkit.WebView.WebViewTransport transport)
+                return false;
+            var popup = new Android.Webkit.WebView(view.Context);
+            popup.Settings.JavaScriptEnabled = true;
+            popup.SetWebViewClient(new PopupCaptureClient(owner, popup));
+            transport.WebView = popup;
+            resultMsg.SendToTarget();
+            return true;
+        }
     }
 
-    private sealed class BlockingWebViewClient(BrowserView owner) : WebViewClient
+    private sealed class PopupCaptureClient(BrowserView owner, Android.Webkit.WebView popup) : WebViewClient
+    {
+        private bool captured;
+
+        private bool Capture(string? url)
+        {
+            if (captured || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+                return false;
+            captured = true;
+            owner.OpenPopupTab(uri.AbsoluteUri);
+            popup.StopLoading();
+            popup.Destroy();
+            return true;
+        }
+
+        public override bool ShouldOverrideUrlLoading(Android.Webkit.WebView? view, IWebResourceRequest? request) =>
+            Capture(request?.Url?.ToString());
+
+        public override void OnPageStarted(Android.Webkit.WebView? view, string? url, Android.Graphics.Bitmap? favicon)
+        {
+            if (!Capture(url)) base.OnPageStarted(view, url, favicon);
+        }
+    }
+
+    private sealed class BlockingWebViewClient(BrowserView owner, Microsoft.Maui.Controls.WebView browser) : WebViewClient
     {
         public override void OnPageStarted(Android.Webkit.WebView? view, string? url, Android.Graphics.Bitmap? favicon)
         {
             base.OnPageStarted(view, url, favicon);
-            if (view is not null) owner.PageStarted(view, url);
+            if (view is not null) owner.PageStarted(browser, view, url);
         }
 
         public override bool ShouldOverrideUrlLoading(Android.Webkit.WebView? view, IWebResourceRequest? request)
@@ -578,17 +751,46 @@ public sealed class BrowserView : ContentView
                 var userAgent = RequestHeader(headers, "User-Agent");
                 var cookie = FirstValue(RequestHeader(headers, "Cookie"),
                     url is null ? null : CookieManager.Instance?.GetCookie(url));
-                owner.ObserveStream(url, referer: referer, userAgent: userAgent, cookie: cookie);
+                owner.ObserveStream(browser, url, referer: referer, userAgent: userAgent, cookie: cookie);
             }
             if (IsBlocked(url) || (request?.IsForMainFrame != true && IsBlockedResource(url)))
                 return new WebResourceResponse("text/plain", "utf-8", new MemoryStream());
             return base.ShouldInterceptRequest(view, request);
         }
 
+        public override void OnLoadResource(Android.Webkit.WebView? view, string? url)
+        {
+            base.OnLoadResource(view, url);
+            // Some Android System WebView versions do not send media requests
+            // through the IWebResourceRequest overload above. OnLoadResource is
+            // the independent fallback and also sees resources inside iframes.
+            if (BrowserStreamDetection.IsLikelyStream(url)) owner.ObserveStream(browser, url);
+        }
+
         public override void OnPageFinished(Android.Webkit.WebView? view, string? url)
         {
             base.OnPageFinished(view, url);
-            if (view is not null) owner.PageFinished(view, url);
+            if (view is not null) owner.PageFinished(browser, view, url);
+        }
+    }
+
+    private sealed class BrowserServiceWorkerClient(BrowserView owner) : ServiceWorkerClient
+    {
+        public override WebResourceResponse? ShouldInterceptRequest(IWebResourceRequest? request)
+        {
+            var url = request?.Url?.ToString();
+            if (BrowserStreamDetection.IsLikelyStream(url))
+            {
+                var headers = request?.RequestHeaders;
+                var referer = RequestHeader(headers, "Referer");
+                var userAgent = RequestHeader(headers, "User-Agent");
+                var cookie = FirstValue(RequestHeader(headers, "Cookie"),
+                    url is null ? null : CookieManager.Instance?.GetCookie(url));
+                owner.ObserveStream(owner.web, url, referer: referer, userAgent: userAgent, cookie: cookie);
+            }
+            if (IsBlocked(url) || IsBlockedResource(url))
+                return new WebResourceResponse("text/plain", "utf-8", new MemoryStream());
+            return null;
         }
     }
 #endif
@@ -596,6 +798,7 @@ public sealed class BrowserView : ContentView
     private const string StreamDetectionScript = """
         (() => {
           const mediaPattern = /(?:\.m3u8|\.mpd|\.mp4|\.m4v|\.webm|\.mov|\.mkv|\.avi|\.flv)(?:$|[?#])|(?:format|type)=(?:m3u8|mpd)(?:&|$)/i;
+          const mediaTypePattern = /^(?:video\/|application\/(?:vnd\.apple\.mpegurl|x-mpegurl|dash\+xml|vnd\.ms-sstr\+xml))/i;
           const normalize = value => {
             try {
               const url = new URL(value, document.baseURI);
@@ -605,22 +808,38 @@ public sealed class BrowserView : ContentView
           if (!window.__psiptvStreamObserver) {
             window.__psiptvStreamObserver = true;
             window.__psiptvStreams = [];
-            const remember = value => {
+            const remember = (value, contentType = '') => {
               const url = normalize(value);
-              if (url && mediaPattern.test(url) && !window.__psiptvStreams.includes(url))
-                window.__psiptvStreams.push(url);
+              if (!url || (!mediaPattern.test(url) && !mediaTypePattern.test(contentType))) return;
+              const score = /(?:\.m3u8)(?:$|[?#])/i.test(url) || /mpegurl/i.test(contentType) ? 100
+                : /(?:\.mpd)(?:$|[?#])/i.test(url) || /dash\+xml/i.test(contentType) ? 95
+                : mediaTypePattern.test(contentType) ? 80 : 70;
+              const existing = window.__psiptvStreams.find(item => item.url === url);
+              if (existing) existing.score = Math.max(existing.score, score);
+              else window.__psiptvStreams.push({ url, score });
             };
             try {
               const originalFetch = window.fetch;
               window.fetch = function(input, init) {
-                remember(typeof input === 'string' ? input : input?.url);
-                return originalFetch.apply(this, arguments);
+                const requestedUrl = typeof input === 'string' ? input : input?.url;
+                remember(requestedUrl);
+                const response = originalFetch.apply(this, arguments);
+                response.then(value => remember(value?.url || requestedUrl,
+                  value?.headers?.get('content-type') || '')).catch(() => {});
+                return response;
               };
             } catch (_) {}
             try {
               const originalOpen = XMLHttpRequest.prototype.open;
               XMLHttpRequest.prototype.open = function(method, url) {
-                remember(url);
+                this.__psiptvUrl = normalize(url);
+                this.addEventListener('readystatechange', function() {
+                  if (this.readyState !== 2 && this.readyState !== 4) return;
+                  let contentType = '';
+                  try { contentType = this.getResponseHeader('content-type') || ''; } catch (_) {}
+                  remember(this.responseURL || this.__psiptvUrl, contentType);
+                });
+                remember(this.__psiptvUrl);
                 return originalOpen.apply(this, arguments);
               };
             } catch (_) {}
@@ -635,20 +854,27 @@ public sealed class BrowserView : ContentView
             const url = normalize(value);
             if (url) candidates.push({ url, score });
           };
-          document.querySelectorAll('video').forEach(media => {
-            add(media.currentSrc, 90);
-            add(media.src, 85);
-          });
-          document.querySelectorAll('video source').forEach(source => add(source.src, 85));
-          document.querySelectorAll('a[href]').forEach(link => {
-            if (mediaPattern.test(link.href)) add(link.href, 60);
-          });
+          const scan = root => {
+            root.querySelectorAll('video, audio').forEach(media => {
+              add(media.currentSrc, 90);
+              add(media.src, 85);
+              add(media.getAttribute('data-src'), 85);
+            });
+            root.querySelectorAll('video source, audio source').forEach(source => add(source.src, 85));
+            root.querySelectorAll('a[href]').forEach(link => {
+              if (mediaPattern.test(link.href)) add(link.href, 60);
+            });
+            root.querySelectorAll('iframe').forEach(frame => {
+              try { if (frame.contentDocument) scan(frame.contentDocument); } catch (_) {}
+            });
+          };
+          scan(document);
           try {
             performance.getEntriesByType('resource').forEach(entry => {
               if (mediaPattern.test(entry.name)) add(entry.name, /\.m3u8(?:$|[?#])/i.test(entry.name) ? 100 : 70);
             });
           } catch (_) {}
-          (window.__psiptvStreams || []).forEach(url => add(url, /\.m3u8(?:$|[?#])/i.test(url) ? 100 : 70));
+          (window.__psiptvStreams || []).forEach(item => add(item.url || item, item.score || 70));
           candidates.sort((left, right) => right.score - left.score);
           return candidates[0]?.url || '';
         })()

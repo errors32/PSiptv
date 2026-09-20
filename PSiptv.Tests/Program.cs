@@ -166,6 +166,11 @@ Check(!BrowserStreamDetection.IsLikelyStream("https://site.test/pagina") &&
       BrowserStreamDetection.Priority("https://media.test/master.m3u8") >
       BrowserStreamDetection.Priority("https://media.test/video.mp4"),
     "Browser ignora páginas e prefere manifestos de streaming");
+Check(BrowserStreamDetection.IsMediaContentType("application/vnd.apple.mpegurl; charset=utf-8") &&
+      BrowserStreamDetection.IsMediaContentType("application/dash+xml") &&
+      BrowserStreamDetection.IsMediaContentType("video/mp4") &&
+      !BrowserStreamDetection.IsMediaContentType("text/html"),
+    "Browser reconhece streams sem extensão através do tipo de conteúdo");
 
 var encryptionKey = AccountDataProtection.CreateKey();
 var sensitiveAccount = new PlaylistAccount
