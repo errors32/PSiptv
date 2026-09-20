@@ -1140,13 +1140,23 @@ public partial class MainPage : ContentPage
         status.Text = "Lista bloqueada. Escolha «Abrir lista» para voltar a entrar.";
     }
 
-    private RemoteControlState ReadRemoteState() => new(
-        DeviceInfo.Name,
-        IsHomeTab ? "Início" : IsFavoritesTab ? "Favoritos" : IsLiveTvTab ? "TV ao Vivo" : IsContentTab ? "Filmes e Séries" : "Browser",
-        selectedCategory ?? LanguageService.Text("Todas as categorias"),
-        liveTv.Volume,
-        liveTv.CurrentItem?.Id ?? "",
-        visibleRemoteChannels.Select(item => new RemoteChannel(item.Id, item.Name)).ToArray());
+    private IReadOnlyList<MediaItem> RemoteChannelItems()
+    {
+        if (visibleRemoteChannels.Count > 0) return visibleRemoteChannels;
+        if (!CatalogOptionsService.Catalogs.TryGetValue(MediaKind.Channel, out var saved)) return [];
+        return CatalogOptionsService.Current.Filter(saved, MediaKind.Channel, LoadSelectedCategory(), "");
+    }
+
+    private RemoteControlState ReadRemoteState()
+    {
+        var remoteChannels = RemoteChannelItems();
+        return new(DeviceInfo.Name,
+            IsHomeTab ? "Início" : IsFavoritesTab ? "Favoritos" : IsLiveTvTab ? "TV ao Vivo" : IsContentTab ? "Filmes e Séries" : "Browser",
+            LoadSelectedCategory() ?? LanguageService.Text("Todas as categorias"),
+            liveTv.Volume,
+            liveTv.CurrentItem?.Id ?? "",
+            remoteChannels.Select(item => new RemoteChannel(item.Id, item.Name)).ToArray());
+    }
 
     private async Task<RemoteControlState> ExecuteRemoteCommandAsync(RemoteControlRequest request)
     {
@@ -1156,10 +1166,11 @@ public partial class MainPage : ContentPage
                 liveTv.Volume = requestedVolume;
                 break;
             case "channel":
-                var item = visibleRemoteChannels.FirstOrDefault(candidate => candidate.Id == request.Value)
-                    ?? throw new InvalidOperationException("O canal já não pertence à lista visível.");
+                var item = RemoteChannelItems().FirstOrDefault(candidate => candidate.Id == request.Value)
+                    ?? throw new InvalidOperationException("O canal já não está disponível.");
                 if (!await CatalogOptionsService.AuthorizePlaybackAsync(this, item))
                     throw new InvalidOperationException("A reprodução precisa de autorização no dispositivo.");
+                if (!IsLiveTvTab || guide) await SwitchAsync(MainSection.LiveTv, false);
                 await liveTv.PlayRemoteAsync(item);
                 break;
             default:
