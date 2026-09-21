@@ -90,6 +90,14 @@ public sealed class PlaybackView : ContentView
         true;
 #endif
 
+    public void HideControls()
+    {
+#if ANDROID
+        controlsHiding?.Cancel();
+        SetControlsVisible(false);
+#endif
+    }
+
     public void SetPreviewMode(bool value)
     {
         previewMode = value;

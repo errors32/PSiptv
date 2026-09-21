@@ -28,9 +28,16 @@ public sealed class PlayerPage : LocalizedPage
     private Action? adaptLayout;
     private readonly double resume;
     private readonly bool liveChannel;
+    private bool changingChannelFromRemote;
+#if ANDROID
+    private readonly Func<Android.Views.Keycode, bool> fullscreenKeyHandler;
+#endif
     public PlayerPage(MediaItem item, IReadOnlyList<MediaItem>? episodes = null, double resume = 0,
         bool transient = false)
     {
+#if ANDROID
+        fullscreenKeyHandler = HandleFullscreenTvKey;
+#endif
         player = new PlaybackView(recordHistory: !transient, requireActiveAccount: !transient);
         current = item; queue = episodes ?? []; this.resume = resume;
         liveChannel = !transient && item.Kind == MediaKind.Channel && !item.IsCatchup;
@@ -274,7 +281,12 @@ public sealed class PlayerPage : LocalizedPage
         Loaded += (_, _) => Adapt();
         PictureInPictureService.Changed += Adapt;
         AppServices.Locked += Stop;
-        Unloaded += (_, _) => { PictureInPictureService.Changed -= Adapt; AppServices.Locked -= Stop; };
+        Unloaded += (_, _) =>
+        {
+            PictureInPictureService.Changed -= Adapt;
+            AppServices.Locked -= Stop;
+            ReleaseFullscreenKeyHandler();
+        };
     }
     protected override async void OnAppearing()
     {
@@ -324,6 +336,43 @@ public sealed class PlayerPage : LocalizedPage
         await player.PlayAsync(channel);
         await LoadGuideAsync();
     }
+
+#if ANDROID
+    private bool HandleFullscreenTvKey(Android.Views.Keycode keyCode)
+    {
+        if (!Ui.IsTelevision || !fullscreen || PictureInPictureService.IsActive || !liveChannel || player.AreControlsVisible ||
+            channelMenu.IsVisible || changingChannelFromRemote) return false;
+        var offset = keyCode == Android.Views.Keycode.DpadUp ? -1 : 1;
+        changingChannelFromRemote = true;
+        Dispatcher.Dispatch(async () =>
+        {
+            try { await SwitchAdjacentChannelAsync(offset); }
+            catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
+            finally { changingChannelFromRemote = false; }
+        });
+        return true;
+    }
+
+    private async Task SwitchAdjacentChannelAsync(int offset)
+    {
+        var available = AvailableChannels().ToArray();
+        if (available.Length < 2) return;
+        var currentKey = CatalogPreferences.ItemKey(current);
+        var index = Array.FindIndex(available, item => CatalogPreferences.ItemKey(item) == currentKey);
+        if (index < 0) return;
+        var next = (index + offset + available.Length) % available.Length;
+        await SwitchChannelAsync(available[next]);
+        player.HideControls();
+    }
+
+    private void ReleaseFullscreenKeyHandler()
+    {
+        if (ReferenceEquals(MainActivity.TelevisionKeyHandler, fullscreenKeyHandler))
+            MainActivity.TelevisionKeyHandler = null;
+    }
+#else
+    private void ReleaseFullscreenKeyHandler() { }
+#endif
 
     private async Task LoadGuideAsync()
     {
@@ -402,6 +451,13 @@ public sealed class PlayerPage : LocalizedPage
     private void SetFullscreen(bool value)
     {
         fullscreen = value;
+#if ANDROID
+        if (Ui.IsTelevision)
+        {
+            if (value && liveChannel) MainActivity.TelevisionKeyHandler = fullscreenKeyHandler;
+            else ReleaseFullscreenKeyHandler();
+        }
+#endif
         if (!value) channelMenu.IsVisible = false;
         player.SetFullscreen(value);
         ScreenOrientationService.SetFullscreen(value);

@@ -3,6 +3,7 @@ using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Provider;
+using Android.Views;
 
 namespace PSiptv
 {
@@ -10,6 +11,9 @@ namespace PSiptv
     [IntentFilter([Intent.ActionMain], Categories = ["android.intent.category.LEANBACK_LAUNCHER"])]
     public class MainActivity : MauiAppCompatActivity
     {
+        internal static Func<Keycode, bool>? TelevisionKeyHandler { get; set; }
+        private bool televisionKeyConsumed;
+
         protected override void OnCreate(Bundle? savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
@@ -56,6 +60,24 @@ namespace PSiptv
         {
             base.OnWindowFocusChanged(hasFocus);
             if (hasFocus) Window?.DecorView.Post(PSiptv.Services.ScreenOrientationService.ReapplySystemBars);
+        }
+        public override bool DispatchKeyEvent(KeyEvent? e)
+        {
+            var handler = TelevisionKeyHandler;
+            if (handler is not null && e is not null && e.KeyCode is Keycode.DpadUp or Keycode.DpadDown)
+            {
+                if (e.Action == KeyEventActions.Down && e.RepeatCount == 0)
+                {
+                    televisionKeyConsumed = handler(e.KeyCode);
+                    if (televisionKeyConsumed) return true;
+                }
+                if (e.Action == KeyEventActions.Up && televisionKeyConsumed)
+                {
+                    televisionKeyConsumed = false;
+                    return true;
+                }
+            }
+            return base.DispatchKeyEvent(e);
         }
         protected override void OnUserLeaveHint() { PSiptv.Services.PictureInPictureService.Enter(); base.OnUserLeaveHint(); }
         public override void OnPictureInPictureModeChanged(bool active, Android.Content.Res.Configuration? configuration) { base.OnPictureInPictureModeChanged(active, configuration); PSiptv.Services.PictureInPictureService.SetActive(active); }
