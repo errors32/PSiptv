@@ -1,5 +1,7 @@
-#if ANDROID
+#if ANDROID || WINDOWS
 using LibVLCSharp.MAUI;
+#endif
+#if ANDROID
 using Microsoft.Maui.Controls.Handlers.Items;
 using Microsoft.Maui.Handlers;
 using PSiptv.Views;
@@ -26,8 +28,10 @@ namespace PSiptv
                     fonts.AddFont("FontAwesomeFreeBrands.otf", "FontAwesomeFreeBrands");
                 });
 
-#if ANDROID
+#if ANDROID || WINDOWS
             builder.UseLibVLCSharp();
+#endif
+#if ANDROID
             BorderHandler.Mapper.AppendToMapping("AndroidTvFocus", (handler, view) =>
             {
                 if (view is not TvFocusableBorder card || !Ui.UsesLargeControls) return;

@@ -1,6 +1,6 @@
 using PSiptv.Core;
 using PSiptv.Services;
-#if ANDROID
+#if ANDROID || WINDOWS
 using LibVLCSharp.Shared;
 using LibVLCSharp.MAUI;
 #else
@@ -38,7 +38,7 @@ public sealed class PlaybackView : ContentView
     private readonly Label externalSubtitle = Ui.Text("", 24);
     private IReadOnlyList<SubtitleCue> externalCues = [];
     private bool externalSubtitlesEnabled;
-#if ANDROID
+#if ANDROID || WINDOWS
     private readonly VideoView video = new()
     {
         HorizontalOptions = LayoutOptions.Fill,
@@ -62,10 +62,16 @@ public sealed class PlaybackView : ContentView
     private readonly HorizontalStackLayout timeshiftControls;
     private readonly Grid controls;
     private CancellationTokenSource? controlsHiding;
+#if ANDROID
     private CancellationTokenSource? pipSurfaceRefreshing;
     private AndroidVideoSurfaceCallback? androidVideoSurfaceCallback;
     private LibVLCSharp.Platforms.Android.VideoView? observedNativeVideo;
     private long phonePipSurfaceRecoveryUntil;
+#endif
+#if WINDOWS
+    private LibVLCSharp.Platforms.Windows.VideoView? observedWindowsVideo;
+    private TaskCompletionSource<string[]> windowsVideoInitialized = NewWindowsVideoInitialization();
+#endif
     private string aspectMode = AppOptions.VideoAspectRatio;
     private string? aspectModeBeforeFullscreen;
     private bool dragging;
@@ -84,7 +90,7 @@ public sealed class PlaybackView : ContentView
     public bool IsPlaying => current is not null;
 #endif
     public bool AreControlsVisible =>
-#if ANDROID
+#if ANDROID || WINDOWS
         controls.IsVisible;
 #else
         true;
@@ -92,7 +98,7 @@ public sealed class PlaybackView : ContentView
 
     public void HideControls()
     {
-#if ANDROID
+#if ANDROID || WINDOWS
         controlsHiding?.Cancel();
         SetControlsVisible(false);
 #endif
@@ -101,7 +107,7 @@ public sealed class PlaybackView : ContentView
     public void SetPreviewMode(bool value)
     {
         previewMode = value;
-#if ANDROID
+#if ANDROID || WINDOWS
         if (value)
         {
             controlsHiding?.Cancel();
@@ -116,7 +122,7 @@ public sealed class PlaybackView : ContentView
     public int Volume
     {
         get =>
-#if ANDROID
+#if ANDROID || WINDOWS
             player?.Volume ?? volume;
 #else
             volume;
@@ -124,7 +130,7 @@ public sealed class PlaybackView : ContentView
         set
         {
             volume = Math.Clamp(value, 0, 100);
-#if ANDROID
+#if ANDROID || WINDOWS
             if (player is not null) player.Volume = volume;
 #else
             video.Volume = volume / 100d;
@@ -149,7 +155,10 @@ public sealed class PlaybackView : ContentView
         externalSubtitle.Padding = new Thickness(10, 5);
         externalSubtitle.Margin = new Thickness(20, 20, 20, 84);
         externalSubtitle.MaximumWidthRequest = 1000;
-#if ANDROID
+#if ANDROID || WINDOWS
+#if WINDOWS
+        video.HandlerChanged += WindowsVideoHandlerChanged;
+#endif
         var grid = new Grid();
         grid.Add(video);
         grid.Add(externalSubtitle);
@@ -231,7 +240,9 @@ public sealed class PlaybackView : ContentView
         Loaded += (_, _) =>
         {
             PictureInPictureService.Changed += PipChanged;
+#if ANDROID
             EnsureAndroidVideoSurfaceCallback();
+#endif
             PipChanged();
             if (compactMode || previewMode) SetControlsVisible(false);
             else ShowControlsTemporarily();
@@ -240,17 +251,23 @@ public sealed class PlaybackView : ContentView
         {
             PictureInPictureService.Changed -= PipChanged;
             controlsHiding?.Cancel();
+#if ANDROID
             if (!PictureInPictureService.IsActive)
             {
                 pipSurfaceRefreshing?.Cancel();
                 DetachAndroidVideoSurfaceCallback();
             }
+#endif
         };
         SizeChanged += (_, _) =>
         {
+#if ANDROID
             RefreshNativeVideoLayout();
+#endif
             ApplyAspectRatio();
+#if ANDROID
             _ = ReapplyAspectRatioAfterLayoutAsync(generation);
+#endif
         };
 #else
         video.ShouldShowPlaybackControls = !compactMode;
@@ -265,7 +282,7 @@ public sealed class PlaybackView : ContentView
         timer = Dispatcher.CreateTimer(); timer.Interval = TimeSpan.FromMilliseconds(250);
         timer.Tick += async (_, _) =>
         {
-#if ANDROID
+#if ANDROID || WINDOWS
             // Poll from the UI thread. Reverse P/Invoke events on VLC-owned
             // Android threads conflict with JNI detach during native shutdown.
             if (player?.State == VLCState.Playing && !opened)
@@ -274,13 +291,15 @@ public sealed class PlaybackView : ContentView
                 PlaybackOpened();
                 ApplyTrackPreferences();
                 ApplyAspectRatio();
+#if ANDROID
                 _ = ReapplyAspectRatioAfterLayoutAsync(generation);
                 _ = RefreshVideoSurfaceAfterOpenAsync(generation);
+#endif
                 MediaOpened?.Invoke(this, EventArgs.Empty);
                 if (this.recordHistory && current is { } first) { try { await HistoryService.RecordAsync(accountId, session, first, Position); } catch { } }
             }
             if (opened && !trackPreferencesApplied) ApplyTrackPreferences();
-            ObserveAndroidStreamState();
+            ObserveStreamState();
             if (player?.State == VLCState.Ended && !ended) { ended = true; SetKeepScreenOn(false); MediaEnded?.Invoke(this, EventArgs.Empty); }
             if (player is not null && !dragging) { seek.Maximum = Math.Max(1, player.Length / 1000d); seek.Value = Math.Clamp(Position, 0, seek.Maximum); seek.IsEnabled = player.IsSeekable; }
             UpdateTimeshiftControls();
@@ -356,7 +375,7 @@ public sealed class PlaybackView : ContentView
         else if (selected == "Ligar legendas externas")
         {
             externalSubtitlesEnabled = true;
-#if ANDROID
+#if ANDROID || WINDOWS
             player?.SetSpu(-1);
 #endif
             UpdateExternalSubtitle();
@@ -369,7 +388,7 @@ public sealed class PlaybackView : ContentView
     {
         externalCues = cues;
         externalSubtitlesEnabled = true;
-#if ANDROID
+#if ANDROID || WINDOWS
         player?.SetSpu(-1);
 #endif
         UpdateExternalSubtitle();
@@ -414,11 +433,18 @@ public sealed class PlaybackView : ContentView
             await ReleaseAsync();
             if (request != generation || version != AppServices.SessionVersion) return;
             current = item; accountId = account?.Id ?? ""; session = version;
-#if ANDROID
+#if ANDROID || WINDOWS
+#if WINDOWS
+            var swapChainOptions = await WaitForWindowsVideoHostAsync(request);
+            if (swapChainOptions is null) return;
+#endif
             inputTransferRate.Reset();
             demuxTransferRate.Reset();
             rate.Text = "";
             var options = new List<string> { "--no-video-title-show" };
+#if WINDOWS
+            options.AddRange(swapChainOptions);
+#endif
             if (AppOptions.OpenSl) options.Add("--aout=opensles");
             if (AppOptions.OpenGl) options.Add("--vout=gles2");
             var timeshiftEnabled = !compactMode && item.Kind == MediaKind.Channel && AppOptions.TimeshiftEnabled;
@@ -436,7 +462,9 @@ public sealed class PlaybackView : ContentView
             AddHttpOption(media, "http-user-agent", FirstHttpValue(item.HttpUserAgent, AppOptions.UserAgent));
             AddHttpOption(media, "http-referrer", item.HttpReferer);
             AddHttpOption(media, "http-cookie", item.HttpCookie);
+#if ANDROID
             if (AppOptions.Decoder == "hardware") media.AddOption(":avcodec-hw=mediacodec");
+#endif
             if (AppOptions.Decoder == "software") media.AddOption(":avcodec-hw=none");
             if (!AppOptions.Subtitles) media.AddOption(":no-spu");
             if (resume > 0 && item.Kind != MediaKind.Channel) media.AddOption($":start-time={resume.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
@@ -448,7 +476,15 @@ public sealed class PlaybackView : ContentView
             bufferingSince = 0;
             observedState = null;
             video.MediaPlayer = player;
+#if ANDROID
             EnsureAndroidVideoSurfaceCallback();
+#elif WINDOWS
+            // Assign the native WinUI view explicitly before starting VLC. If
+            // playback starts without a connected swap-chain host, LibVLC
+            // falls back to creating its own top-level video window.
+            if (video.Handler?.PlatformView is LibVLCSharp.Platforms.Windows.VideoView native)
+                native.MediaPlayer = player;
+#endif
             player.Play(media);
             UpdatePlaybackButton();
             ApplyAspectRatio();
@@ -464,7 +500,7 @@ public sealed class PlaybackView : ContentView
         finally { gate.Release(); }
     }
 
-#if ANDROID
+#if ANDROID || WINDOWS
     private static string FirstHttpValue(string? preferred, string fallback) =>
         !string.IsNullOrWhiteSpace(preferred) ? preferred : fallback;
 
@@ -478,6 +514,37 @@ public sealed class PlaybackView : ContentView
             .Replace("\n", "", StringComparison.Ordinal).Trim();
         if (clean.Length > 0) target.AddOption($":{name}={clean}");
     }
+#if WINDOWS
+    private static TaskCompletionSource<string[]> NewWindowsVideoInitialization() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private void WindowsVideoHandlerChanged(object? sender, EventArgs e)
+    {
+        if (observedWindowsVideo is not null)
+            observedWindowsVideo.Initialized -= WindowsVideoInitialized;
+        observedWindowsVideo = video.Handler?.PlatformView as LibVLCSharp.Platforms.Windows.VideoView;
+        windowsVideoInitialized = NewWindowsVideoInitialization();
+        if (observedWindowsVideo is not null)
+            observedWindowsVideo.Initialized += WindowsVideoInitialized;
+    }
+
+    private void WindowsVideoInitialized(object? sender, LibVLCSharp.Platforms.Windows.InitializedEventArgs e) =>
+        windowsVideoInitialized.TrySetResult(e.SwapChainOptions);
+
+    private async Task<string[]?> WaitForWindowsVideoHostAsync(int request)
+    {
+        try
+        {
+            var options = await windowsVideoInitialized.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            return request == generation ? options : null;
+        }
+        catch (TimeoutException)
+        {
+            StatusChanged?.Invoke(LanguageService.Text("O leitor de vídeo ainda não está visível."));
+            return null;
+        }
+    }
+#endif
 #endif
 
     public async void Stop() => await StopCoreAsync();
@@ -489,7 +556,7 @@ public sealed class PlaybackView : ContentView
         CancelReconnect();
         reconnectAttempt = 0;
         ++generation;
-#if ANDROID
+#if ANDROID || WINDOWS
         controlsHiding?.Cancel();
 #endif
         timer.Stop();
@@ -500,7 +567,7 @@ public sealed class PlaybackView : ContentView
 
     public void Pause()
     {
-#if ANDROID
+#if ANDROID || WINDOWS
         if (player?.IsPlaying == true)
         {
             player.Pause();
@@ -542,7 +609,7 @@ public sealed class PlaybackView : ContentView
 
     public void SetFullscreen(bool value)
     {
-#if ANDROID
+#if ANDROID || WINDOWS
         subtitles.IsVisible = value;
         if (value)
         {
@@ -555,7 +622,9 @@ public sealed class PlaybackView : ContentView
             aspectModeBeforeFullscreen = null;
         }
         ApplyAspectRatio();
+#if ANDROID
         _ = ReapplyAspectRatioAfterLayoutAsync(generation);
+#endif
 #else
         if (value)
         {
@@ -573,7 +642,7 @@ public sealed class PlaybackView : ContentView
     private void PlaybackOpened()
     {
         reconnectAttempt = 0;
-#if ANDROID
+#if ANDROID || WINDOWS
         bufferingSince = 0;
 #endif
         SetKeepScreenOn(true);
@@ -635,8 +704,8 @@ public sealed class PlaybackView : ContentView
         source.Dispose();
     }
 
-#if ANDROID
-    private void ObserveAndroidStreamState()
+#if ANDROID || WINDOWS
+    private void ObserveStreamState()
     {
         if (player is not { } active || current is null) return;
         var state = active.State;
@@ -674,10 +743,12 @@ public sealed class PlaybackView : ContentView
 
     public void UseStretchToViewport()
     {
-#if ANDROID
+#if ANDROID || WINDOWS
         aspectMode = "stretch";
         ApplyAspectRatio();
+#if ANDROID
         _ = ReapplyAspectRatioAfterLayoutAsync(generation);
+#endif
 #else
         video.Aspect = Aspect.Fill;
 #endif
@@ -691,7 +762,7 @@ public sealed class PlaybackView : ContentView
         try { DeviceDisplay.Current.KeepScreenOn = value; }
         catch (FeatureNotSupportedException) { }
     }
-#if ANDROID
+#if ANDROID || WINDOWS
     private void KeepControlsVisible()
     {
         controlsHiding?.Cancel();
@@ -896,6 +967,7 @@ public sealed class PlaybackView : ContentView
         else if (aspectMode is "16:9" or "4:3" or "10:9" or "21:9") active.AspectRatio = aspectMode;
     }
 
+#if ANDROID
     private async Task ReapplyAspectRatioAfterLayoutAsync(int request)
     {
         // The Android surface is recreated both when playback starts and when
@@ -1108,6 +1180,7 @@ public sealed class PlaybackView : ContentView
 
         public void SurfaceDestroyed(Android.Views.ISurfaceHolder holder) { }
     }
+#endif
 
     private string? ViewportAspectRatio()
     {
@@ -1116,9 +1189,14 @@ public sealed class PlaybackView : ContentView
         // back into its own measurement when returning to the preview.
         // Prefer the actual Android host dimensions. MAUI Width/Height can
         // temporarily report the dimensions from the previous orientation.
+#if ANDROID
         var native = video.Handler?.PlatformView as Android.Views.View;
         var width = native?.Width > 0 ? native.Width : (int)Math.Round(Width);
         var height = native?.Height > 0 ? native.Height : (int)Math.Round(Height);
+#else
+        var width = (int)Math.Round(Width);
+        var height = (int)Math.Round(Height);
+#endif
         if (width <= 0 || height <= 0) return null;
         var divisor = GreatestCommonDivisor(width, height);
         return $"{width / divisor}:{height / divisor}";
@@ -1140,22 +1218,33 @@ public sealed class PlaybackView : ContentView
     {
         SetKeepScreenOn(false);
         current = null;
+#if ANDROID || WINDOWS
 #if ANDROID
         pipSurfaceRefreshing?.Cancel();
+#endif
         timeshiftOffsetSeconds = 0;
         timeshiftPausedAt = null;
         timeshiftControls.IsVisible = false;
         seek.IsVisible = true;
         var old = player; player = null;
         UpdatePlaybackButton();
-        if (old is not null) { await Task.Run(old.Stop); video.MediaPlayer = null; old.Dispose(); }
+        if (old is not null)
+        {
+            await Task.Run(old.Stop);
+            video.MediaPlayer = null;
+#if WINDOWS
+            if (video.Handler?.PlatformView is LibVLCSharp.Platforms.Windows.VideoView native)
+                native.MediaPlayer = null;
+#endif
+            old.Dispose();
+        }
         media?.Dispose(); media = null; engine?.Dispose(); engine = null;
 #else
         video.Stop(); video.Source = null;
         await Task.CompletedTask;
 #endif
     }
-#if ANDROID
+#if ANDROID || WINDOWS
     private void ApplyTrackPreferences()
     {
         var active = player;

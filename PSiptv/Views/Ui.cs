@@ -127,7 +127,10 @@ public static class Ui
                 LongPressCommand = new Command(async () => await border.ToggleFavoriteAsync())
             });
         }
-        if (UsesLargeControls)
+        // WinUI does not consistently promote a tap on the card's nested
+        // controls to CollectionView selection. Activate the card explicitly
+        // on Windows, as we already do for remote/large-control layouts.
+        if (UsesLargeControls || DeviceInfo.Platform == DevicePlatform.WinUI)
         {
             var tap = new TapGestureRecognizer();
             tap.Tapped += (_, _) => border.ActivateFromRemote();

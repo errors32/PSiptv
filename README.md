@@ -11,7 +11,7 @@ Leitor IPTV em português, desenvolvido em .NET 10 / MAUI. Não inclui listas ne
 - **TV ao Vivo**: cartões grandes com logótipos e favoritos, filtrados pelo grupo escolhido; tocar num canal inicia o preview integrado. Em horizontal, o vídeo fica ao lado dos canais. Maximizar esconde os menus e força landscape no Android; voltar restaura a orientação anterior.
 - **Multiview**: na TV ao Vivo, abra um mosaico 2×2 para acompanhar até quatro canais da categoria em simultâneo. Pode pesquisar, adicionar, substituir ou remover canais; tocar num painel transfere o áudio para esse canal e mantém os restantes sem som. A quantidade de streams que funciona em simultâneo depende do dispositivo e do fornecedor.
 - **Chromecast avançado**: no Android, o envio direto abre um controlador do recetor com estado e título atuais, reprodução/pausa, saltos de 30 segundos, progresso, volume, silêncio, paragem e desconexão. Filmes e episódios enviam uma fila nativa de até 100 conteúdos, com anterior/seguinte e reprodução automática no Chromecast.
-- **Reprodução a partir do browser**: o browser interno deteta elementos de vídeo e streams HLS/DASH carregadas pela página. Quando encontra uma transmissão HTTP/HTTPS reproduzível, ativa o botão de reprodução para a abrir no leitor integrado com os controlos, proporção, áudio, legendas, ecrã inteiro e partilha já existentes.
+- **Reprodução a partir do browser**: o browser interno deteta elementos de vídeo e streams HLS/DASH carregadas pela página, incluindo pedidos `fetch`/XHR, iframes e service workers no Android. Quando encontra uma transmissão HTTP/HTTPS reproduzível, ativa o botão de reprodução para a abrir no leitor integrado com os controlos, proporção, áudio, legendas, ecrã inteiro e partilha já existentes. Os pop-ups válidos abrem em separadores internos que podem ser alternados e fechados, enquanto os recursos publicitários conhecidos continuam a ser bloqueados.
 - **Favoritos**: use ☆/★ junto a canais, filmes, séries e episódios (ou no leitor integrado) para guardar/remover. Abra **⋯ → Favoritos** para pesquisar e filtrar por tipo. Persistem por lista no armazenamento seguro, respeitam o PIN e são eliminados ao apagar a lista. A identidade M3U usa o endereço do stream para resistir à reordenação da lista; Xtream usa o ID e tipo do conteúdo.
 - **Perfis de utilizador**: o perfil Principal mantém automaticamente os favoritos e o histórico já existentes. É possível criar até oito perfis locais, editar o nome e o ícone de qualquer perfil e alternar entre eles em Perfil e configurações → Perfis de utilizador. Cada perfil tem favoritos e histórico independentes; as listas IPTV e os catálogos permanecem partilhados.
 - **Sincronização e cópia de segurança**: exporta listas, perfis, favoritos, histórico, personalização de categorias, fontes do browser e configurações para um ficheiro `.psiptvbackup` JSON. O token GitHub usado nas atualizações da aplicação é incluído de forma encriptada e volta ao `SecureStorage` ao restaurar; as credenciais das listas continuam em texto legível. O seletor de partilha permite guardar a cópia num serviço cloud ou enviá-la para outro dispositivo; a reposição une os dados aos existentes. Os catálogos descarregáveis não são incluídos, e o ficheiro deve ser guardado num local privado.
@@ -28,7 +28,9 @@ Leitor IPTV em português, desenvolvido em .NET 10 / MAUI. Não inclui listas ne
 - **Gravação recorrente de séries**: no guia, use **Gravar série** para criar uma regra por texto do título, com canal e horário opcionais. A aplicação pesquisa os oito dias seguintes do EPG ao criar a regra, no arranque e periodicamente, agenda novos episódios e evita repetições através da identidade do episódio. As regras podem ser ativadas, editadas, eliminadas e incluídas na cópia de segurança; eliminar uma regra preserva os agendamentos já criados.
 - **Diagnóstico de fontes**: testa a ligação e autenticação, o catálogo de canais, o guia EPG e o endereço de uma stream de amostra. Apresenta o resultado e a duração de cada teste, distingue falhas de avisos opcionais e permite copiar um relatório sem credenciais, tokens ou parâmetros privados.
 - **Downloads offline de VOD**: descarrega filmes e episódios para o armazenamento privado da aplicação, com fila de até dois downloads simultâneos, progresso, pausa, retoma por pedidos HTTP parciais, reprodução local e gestão por perfil. Downloads interrompidos ficam disponíveis para retoma e são removidos com a lista ou o perfil associado.
-- **Experiência dedicada a Android TV**: a aplicação deteta televisões e dispositivos Leanback e aplica um layout mais compacto sem afetar telemóveis ou tablets. Títulos, barras de categorias, navegação inferior, cartões de canais e submenus ocupam menos altura; os ícones passam a ficar ao lado dos nomes onde isso poupa espaço, mantendo alvos de foco visíveis e adequados ao comando remoto.
+- **Experiência dedicada a Android TV**: a aplicação deteta televisões e dispositivos Leanback e aplica um layout mais compacto sem afetar telemóveis ou tablets. Títulos, barras de categorias, navegação inferior, cartões de canais e submenus ocupam menos altura; os ícones passam a ficar ao lado dos nomes onde isso poupa espaço, mantendo alvos de foco visíveis e adequados ao comando remoto. Durante a TV em direto em ecrã inteiro, as teclas cima/baixo do D-pad mudam diretamente para o canal anterior/seguinte da categoria quando os controlos e o menu de canais estão ocultos.
+- **Android Auto**: apresenta e reproduz em modo áudio apenas os canais marcados como favoritos no perfil ativo, usando a interface segura e os controlos multimédia do automóvel. Uma lista protegida por PIN tem de ser previamente desbloqueada na aplicação.
+- **Comando Wear OS**: a aplicação complementar **PSiptv Remote** descobre automaticamente instâncias do PSiptv na mesma rede Wi-Fi, permite escolher o dispositivo quando existe mais do que um, ajustar o volume e mudar de canal. O telemóvel/televisor deve ter o PSiptv aberto e ambos os dispositivos devem estar na mesma rede local.
 - **Timeshift**: no leitor Android, os canais em direto podem ser pausados e retomados, recuados ou avançados em intervalos de 30 segundos e devolvidos imediatamente ao direto. O buffer é temporário, tem uma janela configurável entre 5 e 120 minutos e é limpo automaticamente; a capacidade efetiva de pausa e recuo depende do formato disponibilizado pelo fornecedor.
 - **VOD**: filmes e séries separados; Xtream carrega episódios ordenados por temporada. Nas M3U, a classificação usa o grupo ou o caminho/extensão do conteúdo; episódios são entradas individuais.
 - **Detalhes de filmes e séries**: conteúdos Xtream apresentam imagem de destaque, sinopse, data, género, duração, classificação, elenco, realização e trailer quando fornecidos. Filmes podem ser reproduzidos a partir da página; séries reutilizam os episódios recebidos com os detalhes, evitando um segundo pedido.
@@ -47,13 +49,14 @@ A partilha abre os controlos de transmissão do Android ou de ligação a um ecr
 
 ## Executar
 
-Requer SDK .NET 10 e as workloads MAUI da plataforma. Android requer versão 8.0/API 26 ou superior, conforme o pacote multimédia. O projeto fixa `Microsoft.Maui.Controls` em 10.0.60 e `CommunityToolkit.Maui.MediaElement` em 10.0.0.
+Requer SDK .NET 10 e as workloads MAUI da plataforma. Android requer versão 8.0/API 26 ou superior, conforme o pacote multimédia. O projeto fixa `Microsoft.Maui.Controls` em 10.0.60 e `CommunityToolkit.Maui.MediaElement` em 10.0.0. Android e Windows usam LibVLC no leitor integrado para suportar os formatos e codecs habituais de IPTV.
 
 No Visual Studio, abra `PSiptv.slnx`, escolha o projeto **PSiptv** e o destino **Windows Machine** ou um dispositivo/emulador Android.
 
 ```powershell
 dotnet build PSiptv/PSiptv.csproj -f net10.0-windows10.0.19041.0
 dotnet build PSiptv/PSiptv.csproj -f net10.0-android
+dotnet build PSiptv.Wear/PSiptv.Wear.csproj
 ```
 
 Para distribuir uma atualização Android, use sempre a mesma chave de assinatura da
@@ -131,11 +134,12 @@ dotnet run --project PSiptv.Tests/PSiptv.Tests.csproj
 
 Valida o parsing M3U/XMLTV e XMLTV GZip, classificação e categorias, URLs relativos e ficheiros locais, fusos horários, proteção do PIN, autenticação Xtream, Stalker, Jellyfin, Plex, Tvheadend e HDHomeRun, temporadas, EPG, regras DVR e cancelamento.
 
-Validação realizada: 107 verificações passaram; Windows e Android compilaram sem erros. O executável Windows iniciou e permaneceu ativo no teste de arranque. A reprodução, o Multiview, o Chromecast num recetor real, as legendas externas sobre vídeo real, a deteção de streams em sites reais, os downloads e a gravação, bem como a abertura efetiva num leitor externo instalado, ainda requerem teste com uma fonte real. Os destinos Apple não foram compilados neste ambiente.
+Validação realizada: 117 verificações passaram; Windows e Android compilaram sem erros. O executável Windows iniciou e permaneceu ativo no teste de arranque. A reprodução, o Multiview, o Chromecast num recetor real, as legendas externas sobre vídeo real, a deteção de streams em sites reais, os downloads e a gravação, bem como a abertura efetiva num leitor externo instalado, ainda requerem teste com uma fonte real. Os destinos Apple não foram compilados neste ambiente.
 
 ## Estrutura
 
 - `PSiptv.Core`: modelos, clientes Xtream/M3U/Stalker/Jellyfin/Plex/Tvheadend/HDHomeRun, XMLTV e PIN, sem dependência de MAUI.
+- `PSiptv.Wear`: aplicação complementar Wear OS para volume e mudança de canal por Wi-Fi.
 - `PSiptv/Services`: armazenamento seguro, sessão e tema.
 - `PSiptv/Views`: contas, definições, PIN, guia, episódios e leitor.
 - `PSiptv/MainPage.xaml.cs`: navegação e catálogo com lista virtualizada.
@@ -144,7 +148,7 @@ Validação realizada: 107 verificações passaram; Windows e Android compilaram
 ## Limitações atuais
 
 - A disponibilidade de categorias, programação e conteúdos depende do fornecedor. O guia Xtream apresenta os programas devolvidos pelo endpoint de EPG curto.
-- A reprodução usa o leitor nativo através de [MediaElement](https://learn.microsoft.com/dotnet/communitytoolkit/maui/views/mediaelement); codecs e formatos suportados variam por sistema operativo. Não inclui transcodificação, DRM nem cabeçalhos HTTP personalizados para streams.
+- Android e Windows usam LibVLC no leitor integrado; os destinos Apple usam [MediaElement](https://learn.microsoft.com/dotnet/communitytoolkit/maui/views/mediaelement). Codecs e formatos suportados continuam a variar por sistema operativo. Não inclui transcodificação nem DRM; no leitor LibVLC, os cabeçalhos User-Agent, Referer e Cookie associados à stream são encaminhados ao fornecedor.
 - A reprodução externa entrega o endereço do stream (que pode conter credenciais) ao leitor escolhido. Windows/Mac criam uma lista M3U temporária na cache; ficheiros com mais de 24 horas são removidos na próxima inicialização. O conteúdo de vídeo não é descarregado. A compatibilidade e a reprodução após sair do PSiptv passam a ser controladas pelo leitor externo.
 - XMLTV pode ser XML simples ou comprimido em GZip (`.gz`), até 40 MB depois de descomprimido. Não há descarga de conteúdos de vídeo.
 - Os ficheiros de vídeo das gravações DVR ocupam o armazenamento interno da aplicação e não são incluídos na cópia de segurança. HLS cifrado/DRM não pode ser gravado; nas plataformas não Android, a aplicação tem de permanecer em execução até ao fim do agendamento.
