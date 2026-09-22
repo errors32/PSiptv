@@ -2,6 +2,14 @@
 
 Leitor IPTV em português, desenvolvido em .NET 10 / MAUI. Não inclui listas nem conteúdos pré-carregados.
 
+## Aviso legal e responsabilidade
+
+A PSiptv é apenas um leitor multimédia destinado a fins recreativos, de desenvolvimento e de teste. A aplicação não fornece, aloja, vende, recomenda nem valida listas IPTV, canais, conteúdos ou URLs de terceiros.
+
+Ao instalar ou utilizar a aplicação, o utilizador reconhece e aceita que é o único responsável pelas listas, credenciais, URLs, sites e restantes conteúdos que adiciona, acede ou reproduz, bem como pelo uso que faz da aplicação. Cabe exclusivamente ao utilizador confirmar que possui os direitos e autorizações necessários e que a sua utilização cumpre a legislação, as licenças, os direitos de autor e os termos aplicáveis no seu país.
+
+Algumas listas IPTV, transmissões ou URLs podem ser ilegais ou não autorizadas em determinadas jurisdições. O programador não controla os conteúdos ou serviços de terceiros e, na medida máxima permitida por lei, não se responsabiliza pela sua origem, disponibilidade, legalidade, segurança ou utilização, nem por danos ou outras consequências decorrentes da instalação ou utilização da aplicação. Se tiver dúvidas sobre a legalidade de um conteúdo, não o adicione nem reproduza e procure aconselhamento jurídico local.
+
 ## Funcionalidades
 
 - Contas Xtream Codes: servidor, utilizador e palavra-passe, com validação de autenticação e estado da conta.

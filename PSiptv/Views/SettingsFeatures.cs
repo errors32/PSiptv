@@ -53,6 +53,8 @@ public sealed partial class SettingsPage
         items.Add(ActionRow(FaIcons.Download, "Atualizações da aplicação",
             () => Navigation.PushAsync(new AndroidAppUpdatePage())));
 #endif
+        items.Add(ActionRow(FaIcons.CircleInfo, "Aviso legal e responsabilidade",
+            () => Navigation.PushAsync(new LegalNoticePage())));
         items.Add(ActionRow(FaIcons.Shield, "Política de Privacidade",
             () => Navigation.PushAsync(new InformationPage(false))));
         items.Add(ActionRow(FaIcons.FileLines, "Termos de Uso",
@@ -261,5 +263,18 @@ public sealed class InformationPage : LocalizedPage
             ? LanguageService.Format("PSiptv é um leitor de listas fornecidas pelo utilizador. Não inclui nem vende canais, filmes ou séries.\n\nUtilize apenas conteúdos a que tenha acesso autorizado e respeite as condições do seu fornecedor. A disponibilidade, qualidade e permissões de transmissão dependem desse fornecedor.\n\nAo abrir um leitor externo, o endereço da transmissão é enviado à aplicação escolhida. A partilha de ecrã pode mostrar informação visível no dispositivo.\n\nVersão instalada: {0}", AppInfo.VersionString)
             : LanguageService.Text("As listas, credenciais, preferências por lista e histórico são guardados no armazenamento seguro local do dispositivo. As preferências gerais são guardadas localmente. O guia EPG é guardado localmente em cache para permitir uma abertura rápida e atualizações em segundo plano.\n\nA aplicação contacta os endereços do fornecedor, do guia XMLTV e das imagens da lista para apresentar e reproduzir os conteúdos. Esses serviços recebem o endereço IP e o agente do utilizador configurado.\n\nA biometria é verificada pelo sistema operativo. A aplicação não recebe nem guarda impressões digitais ou imagens faciais. O PIN é guardado como hash com salt.\n\nPode limpar o histórico e eliminar listas nas configurações. Eliminar uma lista remove também o respetivo histórico, favoritos, personalizações e cache EPG. A aplicação não inclui um serviço próprio de recolha de telemetria.");
         var body = Ui.Stack(Ui.Text(title, 26), Ui.Text(text, 16)); body.Padding = 24; body.MaximumWidthRequest = 800; Content = new ScrollView { Content = body };
+    }
+}
+
+public sealed class LegalNoticePage : LocalizedPage
+{
+    public LegalNoticePage()
+    {
+        const string title = "Aviso legal e responsabilidade";
+        Ui.Page(this, title);
+        var body = Ui.Stack(Ui.Text(title, 26), Ui.Text(LanguageService.LegalNotice, 16));
+        body.Padding = 24;
+        body.MaximumWidthRequest = 800;
+        Content = new ScrollView { Content = body };
     }
 }
