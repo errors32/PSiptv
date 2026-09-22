@@ -180,7 +180,7 @@ public sealed partial class SettingsPage
     }
     private async Task UserAgentAsync()
     {
-        var value = await DisplayPromptAsync("Agente do Utilizador", "Cabeçalho enviado ao fornecedor e ao leitor integrado Android.", "Guardar", "Cancelar", initialValue: AppOptions.UserAgent, maxLength: 256);
+        var value = await DisplayPromptAsync("Agente do Utilizador", "Cabeçalho enviado ao fornecedor e ao leitor integrado.", "Guardar", "Cancelar", initialValue: AppOptions.UserAgent, maxLength: 256);
         if (value is null) return;
         value = value.Trim();
         if (value.Length == 0 || value.Any(char.IsControl)) throw new InvalidOperationException("Introduza um agente válido sem quebras de linha.");
