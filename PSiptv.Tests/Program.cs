@@ -16,6 +16,16 @@ void Reject(Action action, string label)
     throw new Exception($"FAIL: {label}");
 }
 
+var initialLeader = RemoteLeadership.Resolve("tablet", 0, "phone", 0);
+Check(initialLeader.DeviceId == "phone" && initialLeader.Epoch == 0,
+    "Eleição remota converge em caso de arranque simultâneo");
+var chosenLeader = RemoteLeadership.Resolve("phone", 10, "tablet", 11);
+Check(chosenLeader.DeviceId == "tablet" && chosenLeader.Epoch == 11,
+    "Escolha mais recente muda o dispositivo ativo");
+var staleLeader = RemoteLeadership.Resolve("tablet", 11, "phone", 10);
+Check(staleLeader.DeviceId == "tablet" && staleLeader.Epoch == 11,
+    "Anúncio antigo não substitui o dispositivo ativo");
+
 Check(ReleaseVersion.TryParse("v1.3.0", out var release130) &&
       ReleaseVersion.TryParse("1.2", out var release120) &&
       release130.CompareTo(release120) > 0,
