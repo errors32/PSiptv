@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Encontrar e controlar outros dispositivos PSiptv ligados ao mesmo Wi-Fi.</string>
 	<key>NSFaceIDUsageDescription</key><string>Utilizar Face ID para desbloquear as suas listas protegidas, em alternativa ao PIN.</string>
 <key>LSRequiresIPhoneOS</key>
 	<true/>

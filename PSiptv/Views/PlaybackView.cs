@@ -339,6 +339,9 @@ public sealed class PlaybackView : ContentView
 
     public async Task PlayAsync(MediaItem item, double resume = 0)
     {
+        // Starting playback locally is also an explicit choice of receiver.
+        // Peers learn the new leader on their next LAN heartbeat and stop their player.
+        if (!RemoteControlService.IsActive) RemoteControlService.ClaimActive();
         CancelReconnect();
         reconnectAttempt = 0;
         recoveryPosition = resume;

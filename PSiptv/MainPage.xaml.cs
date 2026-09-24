@@ -49,7 +49,8 @@ public partial class MainPage : ContentPage
         var topBar = new Grid
         {
             ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Auto)],
+                new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto)],
             ColumnSpacing = 4
         };
         var brand = Ui.Text("PSiptv", 20);
@@ -65,9 +66,10 @@ public partial class MainPage : ContentPage
         identity.Add(brand, 1);
         topBar.Add(identity);
         topBar.Add(IconButton(Ui.FontIconSource(FaIcons.Chromecast, 22, "FontAwesomeFreeBrands"), "Transmitir", () => ScreenSharingService.ChooseAsync(this, liveTv.CurrentItem, liveTv.Pause)), 1);
-        topBar.Add(IconButton("nav_search.png", "Pesquisa global", OpenGlobalSearchAsync), 2);
+        topBar.Add(IconButton(Ui.FontIconSource(FaIcons.Wifi, 20), "Comando remoto", OpenLanRemoteAsync), 2);
+        topBar.Add(IconButton("nav_search.png", "Pesquisa global", OpenGlobalSearchAsync), 3);
         topBar.Add(IconButton("nav_settings.png", "Configurações",
-            () => Navigation.PushAsync(new ProfilePage(ChooseAccountAsync, SwitchUserProfileAsync))), 3);
+            () => Navigation.PushAsync(new ProfilePage(ChooseAccountAsync, SwitchUserProfileAsync))), 4);
         var nav = new Grid { Padding = new Thickness(8, 6, 8, 8) };
         nav.SetDynamicResource(BackgroundColorProperty, "Surface");
         var tabColumn = 0;
@@ -197,6 +199,17 @@ public partial class MainPage : ContentPage
     {
         if (AppServices.ActiveAccount is null) await ChooseAccountAsync();
         if (AppServices.ActiveAccount is { } account) await Navigation.PushAsync(new GlobalSearchPage(account));
+    }
+
+    private async Task OpenLanRemoteAsync()
+    {
+        if (AppServices.ActiveAccount is null) await ChooseAccountAsync();
+        if (AppServices.ActiveAccount is not null)
+        {
+            try { await FavoritesService.LoadAsync(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+            await Navigation.PushAsync(new LanRemotePage());
+        }
     }
 
     private void AddTab(Grid bar, int column, MainSection target, string title, string icon)
@@ -362,6 +375,8 @@ public partial class MainPage : ContentPage
         if (IsBrowserTab)
         {
             visibleRemoteChannels = [];
+            try { await FavoritesService.LoadAsync(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
             browser.Activate();
             return;
         }
@@ -920,10 +935,15 @@ public partial class MainPage : ContentPage
         var selected = await CategoryPickerPage.ChooseAsync(this, "Escolher categoria", categoryChoices,
             selectedCategory ?? LanguageService.Text("Todas as categorias"));
         if (selected is null) return;
-        selectedCategory = selected == LanguageService.Text("Todas as categorias") ? null : selected;
+        await SelectCategoryAsync(selected == LanguageService.Text("Todas as categorias") ? null : selected);
+    }
+
+    private async Task SelectCategoryAsync(string? value)
+    {
+        selectedCategory = value;
         liveAllRequested = IsLiveTvTab && selectedCategory is null;
         SaveSelectedCategory(selectedCategory);
-        categories.Text = selected;
+        categories.Text = selectedCategory ?? LanguageService.Text("Todas as categorias");
         Filter();
         if (!IsLiveTvTab || AppServices.ActiveAccount is not { Provider: ProviderType.Xtream } account) return;
         if (selectedCategory is null)
@@ -1142,9 +1162,7 @@ public partial class MainPage : ContentPage
 
     private IReadOnlyList<MediaItem> RemoteChannelItems()
     {
-        if (visibleRemoteChannels.Count > 0) return visibleRemoteChannels;
-        if (!CatalogOptionsService.Catalogs.TryGetValue(MediaKind.Channel, out var saved)) return [];
-        return CatalogOptionsService.Current.Filter(saved, MediaKind.Channel, LoadSelectedCategory(), "");
+        return FavoritesService.Items.Where(item => item.Kind == MediaKind.Channel).ToArray();
     }
 
     private RemoteControlState ReadRemoteState()
@@ -1152,10 +1170,11 @@ public partial class MainPage : ContentPage
         var remoteChannels = RemoteChannelItems();
         return new(DeviceInfo.Name,
             IsHomeTab ? "Início" : IsFavoritesTab ? "Favoritos" : IsLiveTvTab ? "TV ao Vivo" : IsContentTab ? "Filmes e Séries" : "Browser",
-            LoadSelectedCategory() ?? LanguageService.Text("Todas as categorias"),
-            liveTv.Volume,
+            LanguageService.Text("Favoritos"),
+            DeviceVolumeService.GetMediaVolume(liveTv.Volume),
             liveTv.CurrentItem?.Id ?? "",
-            remoteChannels.Select(item => new RemoteChannel(item.Id, item.Name)).ToArray());
+            remoteChannels.Select(item => new RemoteChannel(item.Id, item.Name)).ToArray(),
+            Categories: []);
     }
 
     private async Task<RemoteControlState> ExecuteRemoteCommandAsync(RemoteControlRequest request)
@@ -1163,14 +1182,18 @@ public partial class MainPage : ContentPage
         switch (request.Command)
         {
             case "volume" when int.TryParse(request.Value, out var requestedVolume):
-                liveTv.Volume = requestedVolume;
+                requestedVolume = Math.Clamp(requestedVolume, 0, 100);
+                if (DeviceVolumeService.TrySetMediaVolume(requestedVolume))
+                    liveTv.Volume = 100;
+                else
+                    liveTv.Volume = requestedVolume;
                 break;
             case "channel":
                 var item = RemoteChannelItems().FirstOrDefault(candidate => candidate.Id == request.Value)
                     ?? throw new InvalidOperationException("O canal já não está disponível.");
                 if (!await CatalogOptionsService.AuthorizePlaybackAsync(this, item))
                     throw new InvalidOperationException("A reprodução precisa de autorização no dispositivo.");
-                if (!IsLiveTvTab || guide) await SwitchAsync(MainSection.LiveTv, false);
+                if (!IsFavoritesTab || guide) await SwitchAsync(MainSection.Favorites, false);
                 await liveTv.PlayRemoteAsync(item);
                 break;
             default:
