@@ -289,8 +289,10 @@ public static class AndroidAppUpdateService
 
     private static HttpClient CreateHttpClient()
     {
+        // Large APKs on slow connections may take longer than 20 minutes.
+        // The foreground service owns the transfer until it completes.
         var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true })
-            { Timeout = TimeSpan.FromMinutes(20) };
+            { Timeout = Timeout.InfiniteTimeSpan };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("PSiptv-Android-Updater/1.0");
         return client;
     }

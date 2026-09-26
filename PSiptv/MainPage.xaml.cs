@@ -1130,7 +1130,12 @@ public partial class MainPage : ContentPage
 #if ANDROID
         var destination = AndroidNotificationNavigation.Consume();
         if (destination is null) return;
-        Page page = destination == "downloads" ? new OfflineDownloadsPage() : new RecordingsPage();
+        Page page = destination switch
+        {
+            "downloads" => new OfflineDownloadsPage(),
+            "updates" => new AndroidAppUpdatePage(),
+            _ => new RecordingsPage()
+        };
         if (Navigation.NavigationStack.LastOrDefault()?.GetType() != page.GetType())
             await Navigation.PushAsync(page);
 #else
