@@ -69,16 +69,24 @@ public static class CatalogOptionsService
     public static CatalogPreferences Current => AppServices.ActiveAccount?.Id == accountId ? options : new();
     public static readonly Dictionary<MediaKind, IReadOnlyList<MediaItem>> Catalogs = [];
     public static event Action? Changed;
-    public static async Task LoadAsync(string id)
+    public static async Task LoadAsync(string id, Action<MediaKind>? onCatalogLoaded = null,
+        MediaKind? preferredKind = null)
     {
+        var sessionVersion = AppServices.SessionVersion;
         await gate.WaitAsync();
         try
         {
             var json = await SecureStorage.Default.GetAsync($"catalog-options.{id}");
+            if (AppServices.SessionVersion != sessionVersion || AppServices.ActiveAccount?.Id != id) return;
             options = json is null ? new() : JsonSerializer.Deserialize<CatalogPreferences>(json) ?? new();
             accountId = id;
             Catalogs.Clear();
-            foreach (var (kind, items) in await CatalogCacheService.LoadAsync(id)) Catalogs[kind] = items;
+            await CatalogCacheService.LoadAsync(id, (kind, items) => MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (AppServices.SessionVersion != sessionVersion || AppServices.ActiveAccount?.Id != id) return;
+                Catalogs[kind] = items;
+                onCatalogLoaded?.Invoke(kind);
+            }), preferredKind);
         }
         finally { gate.Release(); }
     }

@@ -77,7 +77,10 @@
 		<MauiImage Update="Resources\Images\psiptv_banner.svg" Resize="True" BaseSize="320,180" />
 		
 		<!-- Custom Fonts -->
-		<MauiFont Include="Resources\Fonts\*" />
+		<MauiFont Include="Resources\Fonts\OpenSans-Regular.ttf" Alias="OpenSansRegular" />
+		<MauiFont Include="Resources\Fonts\OpenSans-Semibold.ttf" Alias="OpenSansSemibold" />
+		<MauiFont Include="Resources\Fonts\FontAwesomeFreeSolid.otf" Alias="FontAwesomeFreeSolid" />
+		<MauiFont Include="Resources\Fonts\FontAwesomeFreeBrands.otf" Alias="FontAwesomeFreeBrands" />
 
 		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
