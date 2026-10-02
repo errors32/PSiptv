@@ -46,7 +46,8 @@ public static class AppOptions
     {
         get => ReadAspectRatio("videoAspectRatio", "fit");
     }
-    public static string FullscreenVideoAspectRatio => ReadAspectRatio("fullscreenVideoAspectRatio", "stretch");
+    public static string FullscreenVideoAspectRatio => ReadAspectRatio("lastVideoAspectRatio",
+        ReadAspectRatio("fullscreenVideoAspectRatio", VideoAspectRatio));
     private static string ReadAspectRatio(string key, string fallback)
     {
         var value = Preferences.Default.Get(key, fallback);

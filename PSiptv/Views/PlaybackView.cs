@@ -625,6 +625,7 @@ public sealed class PlaybackView : ContentView
             aspectModeBeforeFullscreen = null;
         }
         ApplyAspectRatio();
+        UpdateAspectDescription();
 #if ANDROID
         _ = ReapplyAspectRatioAfterLayoutAsync(generation);
 #endif
@@ -747,12 +748,14 @@ public sealed class PlaybackView : ContentView
     public void UseStretchToViewport()
     {
 #if ANDROID || WINDOWS
+        if (aspectModeBeforeFullscreen is not null) return;
         aspectMode = "stretch";
         ApplyAspectRatio();
 #if ANDROID
         _ = ReapplyAspectRatioAfterLayoutAsync(generation);
 #endif
 #else
+        if (aspectBeforeFullscreen is not null) return;
         video.Aspect = Aspect.Fill;
 #endif
     }
@@ -951,6 +954,7 @@ public sealed class PlaybackView : ContentView
         {
             aspectMode = index switch { 0 => "fit", 1 => "fill", 2 => "stretch", _ => choices[index] };
             Preferences.Default.Set(aspectModeBeforeFullscreen is null ? "videoAspectRatio" : "fullscreenVideoAspectRatio", aspectMode);
+            Preferences.Default.Set("lastVideoAspectRatio", aspectMode);
             ApplyAspectRatio();
             UpdateAspectDescription();
         }
