@@ -115,15 +115,19 @@
         <!-- AAB files cannot be installed directly on a device. The distributable
              side-load/update artifact is always an APK. -->
         <AndroidPackageFormats>apk</AndroidPackageFormats>
-        <AndroidKeyStore>true</AndroidKeyStore>
         <AndroidSigningKeyStore Condition="'$(AndroidSigningKeyStore)' == ''">$(PSIPTV_ANDROID_KEYSTORE)</AndroidSigningKeyStore>
         <AndroidSigningKeyAlias Condition="'$(AndroidSigningKeyAlias)' == ''">$(PSIPTV_ANDROID_KEY_ALIAS)</AndroidSigningKeyAlias>
         <AndroidSigningKeyPass Condition="'$(AndroidSigningKeyPass)' == ''">$(PSIPTV_ANDROID_KEY_PASSWORD)</AndroidSigningKeyPass>
         <AndroidSigningStorePass Condition="'$(AndroidSigningStorePass)' == ''">$(PSIPTV_ANDROID_STORE_PASSWORD)</AndroidSigningStorePass>
+        <!-- Visual Studio signs the archive in Distribute. CLI publishing signs
+             during build when a keystore has been supplied. -->
+        <AndroidKeyStore Condition="'$(AndroidKeyStore)' == '' and '$(AndroidSigningKeyStore)' != ''">true</AndroidKeyStore>
     </PropertyGroup>
+    <!-- The Visual Studio Archive Manager selects the signing identity in its
+         Distribute step. Command-line releases must supply that identity here. -->
     <Target Name="ValidateAndroidReleaseSigning"
             BeforeTargets="Build"
-            Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Release'">
+            Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Release' and '$(BuildingInsideVisualStudio)' != 'true'">
         <Error Condition="'$(AndroidSigningKeyStore)' == '' or !Exists('$(AndroidSigningKeyStore)')"
                Text="Android Release requires a stable signing keystore. Set PSIPTV_ANDROID_KEYSTORE (or AndroidSigningKeyStore) to an existing file." />
         <Error Condition="'$(AndroidSigningKeyAlias)' == ''"
