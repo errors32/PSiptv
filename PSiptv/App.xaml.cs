@@ -38,6 +38,7 @@ public partial class App : Application
         navigation.SetDynamicResource(NavigationPage.BarBackgroundColorProperty, "Surface");
         navigation.SetDynamicResource(NavigationPage.BarTextColorProperty, "Ink");
         var window = new Window(navigation) { Title = "PSiptv" };
+        window.Activated += (_, _) => Dispatcher.Dispatch(async () => await VpnService.HandleStartupAsync());
         if (mainPage is null) _ = CatalogUpdateService.TryRunDueAsync(true);
         window.Stopped += (_, _) =>
         {
@@ -54,6 +55,7 @@ public partial class App : Application
         window.Resumed += (_, _) =>
         {
             EpgService.RefreshActiveInBackground();
+            _ = VpnService.TryReconnectOnResumeAsync();
             // Returning from Android PiP resumes the same playback activity.
             // Some phones report the PiP callback just before this event; do
             // not pop the player page and dispose its video in that interval.

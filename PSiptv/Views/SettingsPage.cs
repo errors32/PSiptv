@@ -11,6 +11,7 @@ public enum SettingsSection
     Parental,
     Categories,
     Player,
+    Vpn,
     About,
     Theme,
     Lists
@@ -131,6 +132,7 @@ public sealed partial class SettingsPage : LocalizedPage
         SettingsSection.Parental => "Controlo Parental",
         SettingsSection.Categories => "Personalizar Categorias",
         SettingsSection.Player => "Configurações do Player",
+        SettingsSection.Vpn => "Ligação VPN",
         SettingsSection.About => "Sobre",
         SettingsSection.Theme => "Tema",
         SettingsSection.Lists => "As Suas Listas",
@@ -147,6 +149,7 @@ public sealed partial class SettingsPage : LocalizedPage
     {
         if (AppServices.ActiveAccount is { } active) await HistoryService.LoadAsync(active.Id);
         foreach (var refresh in refreshRows) refresh();
+        if (section == SettingsSection.Vpn) await ReloadVpnProfilesAsync();
         if (section != SettingsSection.Lists) return;
         accounts.Clear();
         var saved = await AppServices.Accounts.LoadAsync();

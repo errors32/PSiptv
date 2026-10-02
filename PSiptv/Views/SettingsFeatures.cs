@@ -41,6 +41,7 @@ public sealed partial class SettingsPage
                         await OpenAccountPageAsync(() => new CustomCategoriesPage());
                 })),
             SettingsSection.Player => BuildPlayerSettings(android),
+            SettingsSection.Vpn => BuildVpnSettings(android),
             SettingsSection.About => BuildAboutSettings(),
             _ => new ContentView()
         };

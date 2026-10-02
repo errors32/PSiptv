@@ -59,6 +59,11 @@
 		<package android:name="is.xyz.mpv" />
 		<package android:name="com.brouken.player" />
 		<package android:name="org.xbmc.kodi" />
+		<!-- VPN providers shown in the connection settings. -->
+		<package android:name="com.protonvpn.android" />
+		<package android:name="com.gaditek.purevpnics" />
+		<package android:name="com.wireguard.android" />
+		<package android:name="net.openvpn.openvpn" />
 	</queries>
 	<application android:allowBackup="false" android:usesCleartextTraffic="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:banner="@drawable/psiptv_banner" android:appCategory="video" android:supportsRtl="true">
 		<!-- Android Automotive OS (embedded in the car). -->
@@ -76,6 +81,7 @@
 		</provider>
 	</application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+	<uses-permission android:name="com.wireguard.android.permission.CONTROL_TUNNELS" />
 	<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 	<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />

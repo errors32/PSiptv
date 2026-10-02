@@ -49,7 +49,13 @@ namespace PSiptv
         protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
         {
             AndroidFolderGrant.HandleResult(this, requestCode, resultCode, data);
+            AndroidVpnConnection.HandleResult(requestCode, resultCode);
             base.OnActivityResult(requestCode, resultCode, data);
+        }
+        public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
+        {
+            AndroidVpnConnection.HandlePermissionResult(requestCode, grantResults);
+            base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
         }
         public override void OnConfigurationChanged(Android.Content.Res.Configuration newConfig)
         {
