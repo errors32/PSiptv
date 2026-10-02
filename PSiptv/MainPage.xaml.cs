@@ -1103,7 +1103,10 @@ public partial class MainPage : ContentPage
     {
         if (!IsFavoritesTab) return;
         Dispatcher.Dispatch(() =>
-            ShowCatalog(FavoritesService.Items.Where(item => item.Kind == MediaKind.Channel).ToArray(), true));
+        {
+            if (IsFavoritesTab)
+                ShowCatalog(FavoritesService.Items.Where(item => item.Kind == MediaKind.Channel).ToArray(), true);
+        });
     }
 
     private void OnDvrChanged()

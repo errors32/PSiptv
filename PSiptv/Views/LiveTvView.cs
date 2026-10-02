@@ -30,6 +30,8 @@ public sealed class LiveTvView : ContentView
     };
     private readonly CollectionView channels;
     private readonly CollectionView fullscreenChannels;
+    private IReadOnlyList<MediaItem> displayedChannels = [];
+    private bool refreshChannelsAfterLayout;
     private readonly Label fullscreenGroupName = Ui.Text("", 16);
     private readonly Grid channelMenu;
     private readonly Button channelMenuButton;
@@ -94,6 +96,8 @@ public sealed class LiveTvView : ContentView
             channels.SelectedItem = null;
             await SelectChannelAsync(item, false);
         };
+        channels.Loaded += (_, _) => RefreshChannelsAfterLayout();
+        channels.SizeChanged += (_, _) => RefreshChannelsAfterLayout();
         fullscreenChannels = new CollectionView
         {
             SelectionMode = SelectionMode.Single,
@@ -291,11 +295,23 @@ public sealed class LiveTvView : ContentView
 
     public void SetChannels(IReadOnlyList<MediaItem> items, string group)
     {
+        displayedChannels = items;
+        refreshChannelsAfterLayout = !channels.IsLoaded || channels.Width <= 0 || channels.Height <= 0;
         channels.ItemsSource = items;
         fullscreenChannels.ItemsSource = items;
         guideGrid.SetChannels(items);
         groupName.Text = $"{group} ({items.Count})";
         fullscreenGroupName.Text = $"{group} ({items.Count})";
+    }
+
+    private void RefreshChannelsAfterLayout()
+    {
+        if (!refreshChannelsAfterLayout || !channels.IsLoaded || channels.Width <= 0 || channels.Height <= 0)
+            return;
+        refreshChannelsAfterLayout = false;
+        // Android can miss the first CollectionView binding made before layout.
+        channels.ItemsSource = null;
+        channels.ItemsSource = displayedChannels;
     }
 
     private Task ToggleViewModeAsync()
