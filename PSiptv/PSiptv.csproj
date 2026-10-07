@@ -123,14 +123,14 @@
         <AndroidSigningKeyPass Condition="'$(AndroidSigningKeyPass)' == ''">$(PSIPTV_ANDROID_KEY_PASSWORD)</AndroidSigningKeyPass>
         <AndroidSigningStorePass Condition="'$(AndroidSigningStorePass)' == ''">$(PSIPTV_ANDROID_STORE_PASSWORD)</AndroidSigningStorePass>
         <!-- Visual Studio signs the archive in Distribute. CLI publishing signs
-             during build when a keystore has been supplied. -->
+             when a keystore has been supplied. -->
         <AndroidKeyStore Condition="'$(AndroidKeyStore)' == '' and '$(AndroidSigningKeyStore)' != ''">true</AndroidKeyStore>
     </PropertyGroup>
     <!-- The Visual Studio Archive Manager selects the signing identity in its
          Distribute step. Command-line releases must supply that identity here. -->
     <Target Name="ValidateAndroidReleaseSigning"
-            BeforeTargets="Build"
-            Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Release' and '$(BuildingInsideVisualStudio)' != 'true'">
+            BeforeTargets="Publish"
+            Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Release'">
         <Error Condition="'$(AndroidSigningKeyStore)' == '' or !Exists('$(AndroidSigningKeyStore)')"
                Text="Android Release requires a stable signing keystore. Set PSIPTV_ANDROID_KEYSTORE (or AndroidSigningKeyStore) to an existing file." />
         <Error Condition="'$(AndroidSigningKeyAlias)' == ''"
