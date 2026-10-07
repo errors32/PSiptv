@@ -501,6 +501,8 @@ await favorites.SetAsync(account, favoriteChannel, false);
 Check((await favorites.LoadAsync(account.Id)).Count == 0 && (await favorites.LoadAsync(secondAccount.Id)).Count == 1, "Remover favorito não altera outra lista");
 var m3uAccount = account with { Provider = ProviderType.M3U };
 Check(FavoriteStore.ItemKey(m3uAccount, favoriteChannel) == FavoriteStore.ItemKey(m3uAccount, favoriteChannel with { Id = "999", Name = "Renomeado" }), "Favoritos M3U sobrevivem a reordenação");
+var radio = new MediaItem("radio-browser:station-1", "Rádio", "Rádios de Portugal", MediaKind.Channel, "https://example.com/stream-a");
+Check(FavoriteStore.ItemKey(m3uAccount, radio) == FavoriteStore.ItemKey(m3uAccount, radio with { Url = "https://example.com/stream-b" }), "Rádios favoritas sobrevivem a alterações do stream");
 Check(FavoriteStore.ItemKey(account, favoriteChannel) != FavoriteStore.ItemKey(account, favoriteChannel with { Kind = MediaKind.Movie }), "Favoritos distinguem IDs de canais e filmes");
 Check(FavoriteStore.ItemKey(account, favoriteChannel with { Kind = MediaKind.Series, HasEpisodes = true }) != FavoriteStore.ItemKey(account, favoriteChannel with { Kind = MediaKind.Series }), "Favoritos distinguem séries e episódios");
 await Task.WhenAll(Enumerable.Range(1, 12).Select(i => favorites.SetAsync(account, favoriteChannel with { Id = i.ToString() }, true)));

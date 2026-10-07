@@ -10,6 +10,7 @@ public sealed class LiveTvView : ContentView
     private readonly Label message = Ui.Text("Escolha um canal para reproduzir", 15, true);
     private readonly Label channelName = Ui.Text("TV ao Vivo", 16);
     private readonly Label groupName = Ui.Text("Todas as categorias", 18);
+    private readonly SearchBar radioSearch = new() { Placeholder = "Pesquisar rádios", IsVisible = false };
     private readonly Grid layout = new()
     {
         RowSpacing = 10,
@@ -39,7 +40,15 @@ public sealed class LiveTvView : ContentView
     private readonly Grid controls;
     private readonly Button viewModeButton;
     private readonly Button multiviewButton;
+    private readonly Button radioButton;
     private bool guideMode;
+    private bool radioMode;
+    private bool favoritesSection;
+    private int radioRequest;
+    private IReadOnlyList<MediaItem> sectionChannels = [];
+    private string sectionGroup = "";
+    private IReadOnlyList<MediaItem> radioChannels = [];
+    private string radioGroup = "";
     private bool changingChannelFromRemote;
 #if ANDROID
     private readonly Func<Android.Views.Keycode, bool> fullscreenKeyHandler;
@@ -75,6 +84,16 @@ public sealed class LiveTvView : ContentView
                 name.LineBreakMode = LineBreakMode.TailTruncation;
                 name.SetBinding(Label.TextProperty, nameof(MediaItem.Name));
                 var top = new Grid { ColumnDefinitions = [new ColumnDefinition(GridLength.Star)] };
+                var radioIcon = Ui.FontIcon(FaIcons.Music, 34);
+                radioIcon.IsVisible = false;
+                logo.BindingContextChanged += (_, _) =>
+                {
+                    var showIcon = logo.BindingContext is MediaItem item &&
+                        PortugueseRadioService.IsRadio(item) && item.Logo.Length == 0;
+                    radioIcon.IsVisible = showIcon;
+                    logo.IsVisible = !showIcon;
+                };
+                top.Add(radioIcon);
                 top.Add(logo);
                 if (!Ui.IsTelevision)
                 {
@@ -244,22 +263,34 @@ public sealed class LiveTvView : ContentView
         multiviewButton.IsVisible = !DeviceProfile.IsAutomotive;
         SemanticProperties.SetDescription(multiviewButton, LanguageService.Text("Abrir Multiview"));
         ToolTipProperties.SetText(multiviewButton, LanguageService.Text("Abrir Multiview"));
+        radioButton = Ui.Button("", ToggleRadioModeAsync);
+        radioButton.WidthRequest = Ui.IsTelevision ? 116 : 94;
+        radioButton.MinimumHeightRequest = 42;
+        radioButton.Padding = 8;
+        radioButton.ContentLayout = new Button.ButtonContentLayout(Button.ButtonContentLayout.ImagePosition.Left, 3);
+        UpdateRadioButton();
         var groupHeader = new Grid
         {
             ColumnSpacing = 8,
-            ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto)]
+            ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)]
         };
         groupHeader.Add(groupName);
         groupHeader.Add(viewModeButton, 1);
         groupHeader.Add(multiviewButton, 2);
+        groupHeader.Add(radioButton, 3);
+        radioSearch.Placeholder = LanguageService.Text("Pesquisar rádios");
+        radioSearch.SetDynamicResource(SearchBar.TextColorProperty, "Ink");
+        radioSearch.SetDynamicResource(SearchBar.PlaceholderColorProperty, "Muted");
+        radioSearch.TextChanged += (_, _) => ShowRadioChannels();
         channelPanel = new Grid
         {
             RowSpacing = Ui.IsTelevision ? 5 : 10,
-            RowDefinitions = [new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Star)]
+            RowDefinitions = [new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Star)]
         };
         channelPanel.Add(groupHeader);
-        channelPanel.Add(channels, 0, 1);
-        channelPanel.Add(guideGrid, 0, 1);
+        channelPanel.Add(radioSearch, 0, 1);
+        channelPanel.Add(channels, 0, 2);
+        channelPanel.Add(guideGrid, 0, 2);
         SetGuideMode(Preferences.Default.Get("liveTvGuideMode", false));
         layout.Add(video);
         layout.Add(channelPanel);
@@ -289,13 +320,86 @@ public sealed class LiveTvView : ContentView
         return parent as Page;
     }
 
-    public void SetChannels(IReadOnlyList<MediaItem> items, string group)
+    public void SetChannels(IReadOnlyList<MediaItem> items, string group, bool favorites = false)
+    {
+        sectionChannels = items;
+        sectionGroup = group;
+        favoritesSection = favorites;
+        var request = ++radioRequest;
+        if (radioMode)
+        {
+            if (favorites)
+                SetRadioChannels(items.Where(PortugueseRadioService.IsRadio).ToArray(), "Rádios favoritas");
+            else
+            {
+                SetRadioChannels([], "A carregar rádios portuguesas…");
+                _ = LoadRadiosAsync(request);
+            }
+            return;
+        }
+        DisplayChannels(items.Where(item => !PortugueseRadioService.IsRadio(item)).ToArray(), group);
+    }
+
+    private void SetRadioChannels(IReadOnlyList<MediaItem> items, string group)
+    {
+        radioChannels = items;
+        radioGroup = group;
+        ShowRadioChannels();
+    }
+
+    private void ShowRadioChannels()
+    {
+        if (!radioMode) return;
+        var query = radioSearch.Text?.Trim() ?? "";
+        DisplayChannels(query.Length == 0 ? radioChannels : radioChannels.Where(item =>
+            item.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToArray(), radioGroup);
+    }
+
+    private void DisplayChannels(IReadOnlyList<MediaItem> items, string group)
     {
         channels.ItemsSource = items;
         fullscreenChannels.ItemsSource = items;
         guideGrid.SetChannels(items);
         groupName.Text = $"{group} ({items.Count})";
         fullscreenGroupName.Text = $"{group} ({items.Count})";
+    }
+
+    private async Task LoadRadiosAsync(int request)
+    {
+        try
+        {
+            var items = await PortugueseRadioService.GetAsync();
+            if (request == radioRequest && radioMode && !favoritesSection)
+                SetRadioChannels(items, "Rádios de Portugal");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+            if (request == radioRequest && radioMode && !favoritesSection)
+                SetRadioChannels([], "Não foi possível carregar as rádios. Toque em TV e volte a Rádios para tentar.");
+        }
+    }
+
+    private Task ToggleRadioModeAsync()
+    {
+        radioMode = !radioMode;
+        UpdateRadioButton();
+        radioSearch.IsVisible = radioMode;
+        viewModeButton.IsVisible = !radioMode;
+        multiviewButton.IsVisible = !radioMode && !DeviceProfile.IsAutomotive;
+        channels.IsVisible = radioMode || !guideMode;
+        guideGrid.SetActive(!radioMode && guideMode);
+        SetChannels(sectionChannels, sectionGroup, favoritesSection);
+        return Task.CompletedTask;
+    }
+
+    private void UpdateRadioButton()
+    {
+        radioButton.Text = LanguageService.Text(radioMode ? "TV" : "Rádios");
+        radioButton.ImageSource = Ui.FontIconSource(radioMode ? FaIcons.Display : FaIcons.Music, 19);
+        var description = LanguageService.Text(radioMode ? "Mostrar canais de TV" : "Mostrar rádios portuguesas");
+        SemanticProperties.SetDescription(radioButton, description);
+        ToolTipProperties.SetText(radioButton, description);
     }
 
     private Task ToggleViewModeAsync()
