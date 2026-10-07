@@ -927,7 +927,7 @@ public partial class MainPage : ContentPage
             : [];
         items.ItemsSource = filtered;
         if ((IsLiveTvTab || IsFavoritesTab) && !guide)
-            liveTv.SetChannels(filtered, selectedCategory ?? LanguageService.Text("Todas as categorias"));
+            liveTv.SetChannels(filtered, selectedCategory ?? LanguageService.Text("Todas as categorias"), IsFavoritesTab);
     }
 
     private void UpdateCategories()

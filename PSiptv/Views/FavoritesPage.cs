@@ -7,7 +7,7 @@ public sealed class FavoritesPage : LocalizedPage
 {
     private readonly CollectionView items = Ui.MediaList();
     private readonly SearchBar search = new() { Placeholder = "Pesquisar favoritos" };
-    private readonly Picker kind = new() { ItemsSource = new[] { "Todos", "Canais", "Filmes", "Séries e episódios" }, SelectedIndex = 0 };
+    private readonly Picker kind = new() { ItemsSource = new[] { "Todos", "Canais", "Rádios", "Filmes", "Séries e episódios" }, SelectedIndex = 0 };
     private readonly Label count = Ui.Text("", 13, true);
 
     public FavoritesPage()
@@ -54,7 +54,14 @@ public sealed class FavoritesPage : LocalizedPage
     private void Refresh()
     {
         var query = search.Text?.Trim() ?? "";
-        var result = FavoritesService.Items.Where(i => (kind.SelectedIndex == 0 || (int)i.Kind == kind.SelectedIndex - 1)
+        var result = FavoritesService.Items.Where(i => (kind.SelectedIndex switch
+            {
+                1 => i.Kind == MediaKind.Channel && !PortugueseRadioService.IsRadio(i),
+                2 => PortugueseRadioService.IsRadio(i),
+                3 => i.Kind == MediaKind.Movie,
+                4 => i.Kind == MediaKind.Series,
+                _ => true
+            })
             && i.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).OrderBy(i => i.Name).ToList();
         items.ItemsSource = result;
         count.Text = LanguageService.Format("{0} favoritos · {1}", result.Count,

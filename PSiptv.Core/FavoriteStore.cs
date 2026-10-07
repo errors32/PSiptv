@@ -17,7 +17,9 @@ public sealed class FavoriteStore(
     public static string ItemKey(PlaylistAccount account, MediaItem item)
     {
         // M3U IDs are positional, so use the stream address to survive reordering.
-        var identity = account.Provider is ProviderType.M3U or ProviderType.LocalM3U ? item.Url : item.Id;
+        var identity = item.Id.StartsWith("radio-browser:", StringComparison.Ordinal)
+            ? item.Id
+            : account.Provider is ProviderType.M3U or ProviderType.LocalM3U ? item.Url : item.Id;
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
         return $"{item.Kind}:{item.HasEpisodes}:{hash}";
     }
