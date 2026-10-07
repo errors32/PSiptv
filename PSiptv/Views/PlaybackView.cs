@@ -445,6 +445,14 @@ public sealed class PlaybackView : ContentView
             demuxTransferRate.Reset();
             rate.Text = "";
             var options = new List<string> { "--no-video-title-show" };
+            if (PortugueseRadioService.IsRadio(item))
+            {
+                // LibVLC renders these effects from the decoded audio in the
+                // existing video surface. Scope shows the waveform, while the
+                // FFT spectrum separates bass from treble in real time.
+                options.Add("--audio-visual=visual");
+                options.Add("--effect-list=scope,spectrum");
+            }
 #if WINDOWS
             options.AddRange(swapChainOptions);
 #endif
