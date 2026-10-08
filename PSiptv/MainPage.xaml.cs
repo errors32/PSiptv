@@ -494,6 +494,7 @@ public partial class MainPage : ContentPage
         AppServices.Activate(account);
         UpdateAccountLabel();
         await FavoritesSyncService.OnStartupAsync();
+        PodcastAutomationService.Start();
         await CatalogOptionsService.LoadAsync(account.Id);
         contentFilter = ReadContentFilter(account.Id);
         UpdateContentFilters();

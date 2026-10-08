@@ -29,6 +29,11 @@ public sealed class PlaybackView : ContentView
     private string accountId = "";
     private int session;
     private int ticks;
+    private bool podcastVideoMode;
+    private string podcastPlaybackAudioUrl = "";
+    private float podcastRate = 1;
+    private readonly Grid podcastCover = new() { BackgroundColor = Colors.Black, IsVisible = false };
+    private readonly LogoImage podcastArtwork = new() { Aspect = Aspect.AspectFit, Margin = 24 };
     private int volume = 100;
     private bool keepScreenOn;
     private int reconnectAttempt;
@@ -83,11 +88,13 @@ public sealed class PlaybackView : ContentView
     private int timeshiftOffsetSeconds;
     private long? timeshiftPausedAt;
     public double Position => (player?.Time ?? 0) / 1000d;
+    public double Duration => (player?.Length ?? 0) / 1000d;
     public bool IsPlaying => player?.IsPlaying == true;
 #else
     private readonly MediaElement video = new() { ShouldAutoPlay = true, ShouldShowPlaybackControls = true, Aspect = Aspect.AspectFit };
     private Aspect? aspectBeforeFullscreen;
     public double Position => video.Position.TotalSeconds;
+    public double Duration => video.Duration.TotalSeconds;
     public bool IsPlaying => current is not null;
 #endif
     public bool AreControlsVisible =>
@@ -153,6 +160,10 @@ public sealed class PlaybackView : ContentView
         this.recordHistory = recordHistory ?? !compactMode;
         this.requireActiveAccount = requireActiveAccount;
         BackgroundColor = Colors.Black;
+        podcastCover.Add(podcastArtwork);
+        var coverTap = new TapGestureRecognizer();
+        coverTap.Tapped += (_, _) => ShowPodcastControls();
+        podcastCover.GestureRecognizers.Add(coverTap);
         externalSubtitle.IsVisible = false;
         externalSubtitle.InputTransparent = true;
         externalSubtitle.HorizontalOptions = LayoutOptions.Center;
@@ -173,6 +184,7 @@ public sealed class PlaybackView : ContentView
         grid.Add(radioSpectrum);
 #endif
         grid.Add(externalSubtitle);
+        grid.Add(podcastCover);
         pause = Ui.Button("", TogglePlaybackAsync);
         pause.ImageSource = Ui.FontIconSource(FaIcons.Play, 20);
         pause.WidthRequest = 48;
@@ -284,6 +296,7 @@ public sealed class PlaybackView : ContentView
         video.ShouldShowPlaybackControls = !compactMode;
         var grid = new Grid();
         grid.Add(video);
+        grid.Add(podcastCover);
         grid.Add(externalSubtitle);
         Content = grid;
         video.MediaOpened += async (_, _) => { PlaybackOpened(); MediaOpened?.Invoke(this, EventArgs.Empty); if (this.recordHistory && current is { } item) { try { await HistoryService.RecordAsync(accountId, session, item, Position); } catch { } } };
@@ -299,6 +312,7 @@ public sealed class PlaybackView : ContentView
             if (player?.State == VLCState.Playing && !opened)
             {
                 opened = true;
+                if (current is { } podcastItem && PodcastFeed.IsPodcast(podcastItem)) player.SetRate(podcastRate);
                 PlaybackOpened();
                 ApplyTrackPreferences();
                 ApplyAspectRatio();
@@ -334,7 +348,7 @@ public sealed class PlaybackView : ContentView
 #endif
             UpdateExternalSubtitle();
             if (this.recordHistory && ++ticks % 40 == 0 && current is { } item && IsPlaying)
-            { try { await HistoryService.RecordAsync(accountId, session, item, Position); } catch { /* Playback must survive storage exhaustion. */ } }
+            { try { await HistoryService.RecordAsync(accountId, session, item, Position); await SavePodcastProgressAsync(); } catch { /* Playback must survive storage exhaustion. */ } }
             if (current is { Kind: not MediaKind.Channel } && IsPlaying)
                 recoveryPosition = Math.Max(recoveryPosition, Position);
         };
@@ -352,14 +366,65 @@ public sealed class PlaybackView : ContentView
 
     public async Task PlayAsync(MediaItem item, double resume = 0)
     {
+        await SavePodcastProgressAsync();
         // Starting playback locally is also an explicit choice of receiver.
         // Peers learn the new leader on their next LAN heartbeat and stop their player.
         if (!RemoteControlService.IsActive) RemoteControlService.ClaimActive();
         CancelReconnect();
         reconnectAttempt = 0;
         recoveryPosition = resume;
+        if (lastRequested?.Id != item.Id) { podcastPlaybackAudioUrl = item.Url; podcastVideoMode = false; }
         lastRequested = item;
+        podcastArtwork.BindingContext = item;
+        podcastCover.IsVisible = PodcastFeed.IsPodcast(item) && !podcastVideoMode;
         await StartPlaybackAsync(item, resume);
+    }
+
+    private void ShowPodcastControls()
+    {
+#if ANDROID || WINDOWS
+        ShowControlsTemporarily();
+#endif
+    }
+
+    private async Task SavePodcastProgressAsync()
+    {
+        if (!recordHistory || current is not { } item || !PodcastFeed.IsPodcast(item)) return;
+        try { await FavoritesService.RecordPodcastAsync(item, Position, Duration, accountId, session); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+    }
+
+    public async Task SeekByAsync(int seconds)
+    {
+        var target = Math.Clamp(Position + seconds, 0, Duration > 0 ? Duration : double.MaxValue);
+#if ANDROID || WINDOWS
+        if (player?.IsSeekable == true) player.Time = (long)(target * 1000);
+        ShowControlsTemporarily();
+#else
+        await video.SeekTo(TimeSpan.FromSeconds(target));
+#endif
+        await SavePodcastProgressAsync();
+    }
+
+    public bool SetPodcastRate(float value)
+    {
+#if ANDROID || WINDOWS
+        if (player is null || player.SetRate(value) != 0) return false;
+        podcastRate = value;
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    public async Task SetPodcastVideoAsync(bool value)
+    {
+        if (current is not { } item || item.PodcastVideoUrl.Length == 0) return;
+        var position = Position;
+        var wasPlaying = IsPlaying;
+        podcastVideoMode = value;
+        await PlayAsync(item with { Url = value ? item.PodcastVideoUrl : podcastPlaybackAudioUrl }, position);
+        if (!wasPlaying) Pause();
     }
 
     public async Task SelectExternalSubtitlesAsync(Page page)
@@ -491,6 +556,7 @@ public sealed class PlaybackView : ContentView
 #endif
             if (AppOptions.Decoder == "software") media.AddOption(":avcodec-hw=none");
             if (!AppOptions.Subtitles) media.AddOption(":no-spu");
+            if (PodcastFeed.IsPodcast(item) && !podcastVideoMode) media.AddOption(":no-video");
             if (resume > 0 && item.Kind != MediaKind.Channel) media.AddOption($":start-time={resume.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
             opened = ended = failed = trackPreferencesApplied = false;
             timeshiftOffsetSeconds = 0;
@@ -584,6 +650,7 @@ public sealed class PlaybackView : ContentView
 
     private async Task StopCoreAsync()
     {
+        await SavePodcastProgressAsync();
         CancelReconnect();
         reconnectAttempt = 0;
         ++generation;

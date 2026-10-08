@@ -9,6 +9,7 @@ public static class OfflineDownloadService
 {
     private static readonly SemaphoreSlim gate = new(1, 1);
     private static readonly SemaphoreSlim slots = new(2, 2);
+    private static readonly SemaphoreSlim automaticSlot = new(1, 1);
     private static readonly Dictionary<string, CancellationTokenSource> active = [];
     private static readonly HttpClient http = new() { Timeout = Timeout.InfiniteTimeSpan };
     private const string DownloadsDirectoryKey = "offline.downloadsDirectory";
@@ -208,11 +209,12 @@ public static class OfflineDownloadService
         return download.Item with
         {
             Url = new Uri(path, UriKind.Absolute).AbsoluteUri, IsCatchup = true,
+            PodcastAudioUrl = download.Item.PodcastAudioUrl.Length > 0 ? download.Item.PodcastAudioUrl : download.Item.Url,
             SourceCommand = "", HttpReferer = "", HttpUserAgent = "", HttpCookie = ""
         };
     }
 
-    public static async Task<OfflineDownload> QueueAsync(PlaylistAccount account, MediaItem item, string seriesName = "")
+    public static async Task<OfflineDownload> QueueAsync(PlaylistAccount account, MediaItem item, string seriesName = "", bool automatic = false)
     {
 #if ANDROID
         await PSiptv.AndroidNotificationPermission.RequestAsync();
@@ -220,6 +222,8 @@ public static class OfflineDownloadService
         if (!OfflineDownloadPolicy.CanDownload(item))
             throw new InvalidOperationException("Este conteúdo não tem um endereço VOD descarregável.");
         var profileId = UserProfileService.Active.Id;
+        if (automatic && !PodcastAutomationService.CanRun(PodcastAutomationService.Options(account.Id, profileId)))
+            throw new InvalidOperationException("Os downloads automáticos estão desligados ou a rede não é permitida.");
         var id = OfflineDownloadPolicy.IdFor(account.Id, profileId, item);
         OfflineDownload download;
         await gate.WaitAsync();
@@ -230,7 +234,7 @@ public static class OfflineDownloadService
             if (existing?.IsComplete == true && DownloadFileExists(existing.FileName)) return existing;
             download = existing is null
                 ? new(id, account.Id, profileId, item, seriesName, FileName: FileNameFor(item, id),
-                    CreatedAt: DateTimeOffset.Now, UpdatedAt: DateTimeOffset.Now)
+                    CreatedAt: DateTimeOffset.Now, UpdatedAt: DateTimeOffset.Now, Automatic: automatic)
                 : existing with { State = OfflineDownloadState.Queued, Error = "", UpdatedAt = DateTimeOffset.Now };
             items.RemoveAll(value => value.Id == id);
             items.Add(download);
@@ -255,10 +259,29 @@ public static class OfflineDownloadService
 
     public static async Task PauseAsync(OfflineDownload download)
     {
+        // A manual pause must remain paused when the automation checks the network again.
+        if (download.Automatic)
+            await UpdateAsync(download.AccountId, download.ProfileId, download.Id, item => item with { Automatic = false });
         CancellationTokenSource? cancellation;
         lock (active) active.TryGetValue(download.Id, out cancellation);
         cancellation?.Cancel();
         if (cancellation is null) await SetStateAsync(download, OfflineDownloadState.Paused, "");
+    }
+
+    public static async Task PauseAutomaticAsync(string accountId, string profileId)
+    {
+        try
+        {
+            foreach (var download in (await LoadAsync(accountId, profileId)).Where(d => d.Automatic &&
+                d.State is OfflineDownloadState.Queued or OfflineDownloadState.Downloading))
+            {
+                CancellationTokenSource? cancellation;
+                lock (active) active.TryGetValue(download.Id, out cancellation);
+                cancellation?.Cancel();
+                if (cancellation is null) await SetStateAsync(download, OfflineDownloadState.Paused, "");
+            }
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
     }
 
     public static async Task RemoveAsync(OfflineDownload download)
@@ -333,8 +356,16 @@ public static class OfflineDownloadService
     private static async Task RunAsync(PlaylistAccount account, OfflineDownload download, CancellationTokenSource cancellation)
     {
         var entered = false;
+        var automaticEntered = false;
         try
         {
+            if (download.Automatic)
+            {
+                await automaticSlot.WaitAsync(cancellation.Token);
+                automaticEntered = true;
+                if (!PodcastAutomationService.CanRun(PodcastAutomationService.Options(download.AccountId, download.ProfileId)))
+                    throw new OperationCanceledException();
+            }
             await slots.WaitAsync(cancellation.Token);
             entered = true;
             await SetStateAsync(download, OfflineDownloadState.Downloading, "");
@@ -370,6 +401,16 @@ public static class OfflineDownloadService
             if (!append) existing = 0;
             var total = response.Content.Headers.ContentRange?.Length ??
                         (response.Content.Headers.ContentLength is { } length ? length + existing : null);
+            var remainingBudget = long.MaxValue;
+            if (download.Automatic)
+            {
+                var settings = PodcastAutomationService.Options(download.AccountId, download.ProfileId);
+                var used = (await LoadAsync(download.AccountId, download.ProfileId))
+                    .Where(d => d.Id != download.Id && PodcastFeed.IsPodcast(d.Item)).Sum(d => DownloadFileLength(d.FileName));
+                remainingBudget = Math.Clamp(settings.MaximumMegabytes, 128, 10240) * 1024L * 1024L - used;
+                if (remainingBudget <= 0 || total > remainingBudget)
+                    throw new InvalidOperationException("Limite de espaço dos podcasts atingido.");
+            }
             await UpdateProgressAsync(download, existing, total);
             await using var input = await response.Content.ReadAsStreamAsync(cancellation.Token);
             await using var output = OpenDownloadWriteStream(download.FileName, append);
@@ -379,6 +420,13 @@ public static class OfflineDownloadService
             int read;
             while ((read = await input.ReadAsync(buffer, cancellation.Token)) > 0)
             {
+                if (download.Automatic)
+                {
+                    if (!PodcastAutomationService.CanRun(PodcastAutomationService.Options(download.AccountId, download.ProfileId)))
+                        throw new OperationCanceledException();
+                    if (downloaded + read > remainingBudget)
+                        throw new InvalidOperationException("Limite de espaço dos podcasts atingido.");
+                }
                 await output.WriteAsync(buffer.AsMemory(0, read), cancellation.Token);
                 downloaded += read;
                 if (Environment.TickCount64 - lastUpdate >= 750)
@@ -400,6 +448,7 @@ public static class OfflineDownloadService
         }
         finally
         {
+            if (automaticEntered) automaticSlot.Release();
             if (entered) slots.Release();
             lock (active)
             {

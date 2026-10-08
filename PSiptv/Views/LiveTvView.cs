@@ -43,6 +43,13 @@ public sealed class LiveTvView : ContentView
     private readonly Button viewModeButton;
     private readonly Button multiviewButton;
     private readonly Button radioButton;
+    private readonly Button recentButton;
+    private bool recentOnly;
+    private IReadOnlyList<MediaItem> recentChannels = [];
+    private readonly Dictionary<string, string> listAnchors = [];
+    private string displayedScope = "";
+    private string recentHistoryScope = "";
+    private readonly Dictionary<string, WeakReference<TvFocusableBorder>> channelCards = [];
     private bool guideMode;
     private bool radioMode;
     private bool favoritesSection;
@@ -104,6 +111,7 @@ public sealed class LiveTvView : ContentView
                     top.Add(favorite, 1);
                 }
                 var card = Ui.FocusableCard(Ui.Stack(top, name), value => channels!.SelectedItem = value);
+                TrackChannelCard(card);
                 card.Padding = 10;
                 card.MinimumHeightRequest = Ui.IsTelevision ? 108 : 142;
                 return card;
@@ -142,6 +150,7 @@ public sealed class LiveTvView : ContentView
             row.Add(Ui.Stack(title, subtitle), 1);
             if (!Ui.IsTelevision) row.Add(new FavoriteButton { WidthRequest = 44 }, 2);
             var card = Ui.FocusableCard(row, value => channels.SelectedItem = value);
+            TrackChannelCard(card);
             card.Padding = new Thickness(9, 6);
             card.MinimumHeightRequest = 62;
             return card;
@@ -151,6 +160,11 @@ public sealed class LiveTvView : ContentView
             if (e.CurrentSelection.FirstOrDefault() is not MediaItem item) return;
             channels.SelectedItem = null;
             await SelectChannelAsync(item, false);
+        };
+        channels.Scrolled += (_, e) =>
+        {
+            if (channels.ItemsSource is not IReadOnlyList<MediaItem> source || e.FirstVisibleItemIndex < 0 || e.FirstVisibleItemIndex >= source.Count) return;
+            listAnchors[displayedScope] = CatalogPreferences.ItemKey(source[e.FirstVisibleItemIndex]);
         };
         fullscreenChannels = new CollectionView
         {
@@ -308,11 +322,25 @@ public sealed class LiveTvView : ContentView
         radioButton.Padding = 8;
         radioButton.ContentLayout = new Button.ButtonContentLayout(Button.ButtonContentLayout.ImagePosition.Left, 0);
         UpdateRadioButton();
+        recentButton = FullscreenButton(FaIcons.ClockRotateLeft, "Últimos canais", async () =>
+        {
+            if (AppServices.ActiveAccount is not { } account) return;
+            var session = AppServices.SessionVersion;
+            var history = await HistoryService.LoadAsync(account.Id);
+            if (session != AppServices.SessionVersion) return;
+            recentHistoryScope = UserProfileService.Scope(account.Id);
+            recentChannels = history.Select(e => e.Item).Where(e => e.Kind == MediaKind.Channel && !e.IsCatchup)
+                .DistinctBy(CatalogPreferences.ItemKey).Take(20).ToArray();
+            recentOnly = !recentOnly;
+            recentButton!.ImageSource = Ui.FontIconSource(recentOnly ? FaIcons.List : FaIcons.ClockRotateLeft, 19);
+            SemanticProperties.SetDescription(recentButton, LanguageService.Text(recentOnly ? "Todos os canais" : "Últimos canais"));
+            SetChannels(sectionChannels, sectionGroup, favoritesSection);
+        });
         var groupHeader = new Grid
         {
             ColumnSpacing = 8,
             ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto),
-                new(GridLength.Auto), new(GridLength.Auto)]
+                new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)]
         };
         groupHeader.Add(groupName);
         groupHeader.Add(viewModeButton, 1);
@@ -327,6 +355,7 @@ public sealed class LiveTvView : ContentView
         SemanticProperties.SetDescription(podcasts, LanguageService.Text("Mostrar podcasts"));
         ToolTipProperties.SetText(podcasts, LanguageService.Text("Mostrar podcasts"));
         groupHeader.Add(podcasts, 4);
+        groupHeader.Add(recentButton, 5);
         radioSearch.Placeholder = LanguageService.Text("Pesquisar rádios");
         radioSearch.SetDynamicResource(SearchBar.TextColorProperty, "Ink");
         radioSearch.SetDynamicResource(SearchBar.PlaceholderColorProperty, "Muted");
@@ -372,9 +401,16 @@ public sealed class LiveTvView : ContentView
 
     public void SetChannels(IReadOnlyList<MediaItem> items, string group, bool favorites = false)
     {
+        if (AppServices.ActiveAccount is { } account && recentHistoryScope != UserProfileService.Scope(account.Id))
+        {
+            recentOnly = false;
+            recentChannels = [];
+            recentButton.ImageSource = Ui.FontIconSource(FaIcons.ClockRotateLeft, 19);
+        }
         sectionChannels = items;
         sectionGroup = group;
         favoritesSection = favorites;
+        if (recentOnly) { DisplayChannels(items, group); return; }
         var request = ++radioRequest;
         if (radioMode)
         {
@@ -407,11 +443,33 @@ public sealed class LiveTvView : ContentView
 
     private void DisplayChannels(IReadOnlyList<MediaItem> items, string group)
     {
-        channels.ItemsSource = items;
+        if (recentOnly)
+        {
+            items = recentChannels.Where(e => PortugueseRadioService.IsRadio(e) == radioMode).ToArray();
+            group = LanguageService.Text("Últimos canais");
+        }
+        displayedScope = (AppServices.ActiveAccount is { } account ? UserProfileService.Scope(account.Id) : "") +
+            ":" + radioMode + ":" + favoritesSection + ":" + group;
+        if (channels.ItemsSource is not IEnumerable<MediaItem> previous || !previous.SequenceEqual(items))
+        {
+            channels.ItemsSource = items;
+            if (listAnchors.TryGetValue(displayedScope, out var anchor) &&
+                items.FirstOrDefault(e => CatalogPreferences.ItemKey(e) == anchor) is { } target)
+                Dispatcher.Dispatch(() => channels.ScrollTo(target, position: ScrollToPosition.Start, animate: false));
+        }
         fullscreenChannels.ItemsSource = items;
         guideGrid.SetChannels(items);
         groupName.Text = $"{group} ({items.Count})";
         fullscreenGroupName.Text = $"{group} ({items.Count})";
+    }
+
+    private void TrackChannelCard(TvFocusableBorder card)
+    {
+        card.BindingContextChanged += (_, _) =>
+        {
+            if (card.BindingContext is MediaItem item)
+                channelCards[CatalogPreferences.ItemKey(item)] = new(card);
+        };
     }
 
     private async Task LoadRadiosAsync(int request)
@@ -630,6 +688,13 @@ public sealed class LiveTvView : ContentView
         ScreenOrientationService.SetFullscreen(value);
         FullscreenChanged?.Invoke(value);
         Arrange();
+        if (!value && Ui.IsTelevision && CurrentItem is { } focusedItem &&
+            channelCards.TryGetValue(CatalogPreferences.ItemKey(focusedItem), out var weak))
+            Dispatcher.Dispatch(() =>
+            {
+                if (weak.TryGetTarget(out var card) && card.Handler is not null &&
+                    card.BindingContext is MediaItem bound && bound.Id == focusedItem.Id) card.Focus();
+            });
     }
 
     private void Arrange()

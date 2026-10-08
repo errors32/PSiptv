@@ -68,6 +68,16 @@ public static class FavoritesService
         if (UserProfileService.Scope(AppServices.ActiveAccount?.Id ?? "") == scope) Changed?.Invoke();
     }
 
+    public static async Task RecordPodcastAsync(MediaItem item, double position, double duration, string accountId, int session)
+    {
+        if (AppServices.ActiveAccount?.Id != accountId || AppServices.SessionVersion != session) return;
+        var portable = item with { Url = item.PodcastAudioUrl.Length > 0 ? item.PodcastAudioUrl : item.Url, IsCatchup = false };
+        await Store.RecordPodcastAsync(UserProfileService.Scope(accountId), portable, position, duration);
+    }
+
+    public static Task VisitPodcastAsync(string id, DateTimeOffset date) => AppServices.ActiveAccount is { } account
+        ? Store.VisitPodcastAsync(UserProfileService.Scope(account.Id), id, date) : Task.CompletedTask;
+
     public static async Task DeleteAsync(string accountId)
     {
         foreach (var profile in UserProfileService.Profiles)
@@ -80,8 +90,10 @@ public static class FavoritesService
     public static Task<FavoriteSnapshot> ExportSnapshotAsync(string accountId, string profileId) =>
         Store.SnapshotAsync(UserProfileService.Scope(accountId, profileId));
     public static Task ImportAsync(string accountId, string profileId, IReadOnlyList<FavoriteEntry> entries,
-        IReadOnlyDictionary<string, PodcastHeardEntry>? heard = null) =>
-        Store.ReplaceAsync(UserProfileService.Scope(accountId, profileId), entries, heard);
+        IReadOnlyDictionary<string, PodcastHeardEntry>? heard = null,
+        IReadOnlyDictionary<string, PodcastPlaybackEntry>? progress = null,
+        IReadOnlyDictionary<string, DateTimeOffset>? visits = null) =>
+        Store.ReplaceAsync(UserProfileService.Scope(accountId, profileId), entries, heard, progress, visits);
     public static void Clear() => Apply(null, []);
     private static void Apply(string? scope, IReadOnlyList<FavoriteEntry> saved)
     {

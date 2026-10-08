@@ -28,7 +28,7 @@ public sealed record MediaItem(string Id, string Name, string Category, MediaKin
     string Url = "", string Logo = "", string EpgId = "", bool HasEpisodes = false, string ParentSeriesId = "",
     bool HasCatchup = false, int CatchupDays = 0, string CatchupMode = "", string CatchupSource = "", bool IsCatchup = false,
     string HttpReferer = "", string HttpUserAgent = "", string HttpCookie = "", string SourceCommand = "",
-    DateTimeOffset? PublishedAt = null);
+    DateTimeOffset? PublishedAt = null, string PodcastVideoUrl = "", string MediaType = "", string PodcastAudioUrl = "");
 
 public sealed record CatalogCategory(string Id, string Name);
 

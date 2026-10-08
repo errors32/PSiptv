@@ -23,14 +23,24 @@ public static class PodcastFeed
         foreach (var row in document.Descendants().Where(e => e.Name.LocalName == "item"))
         {
             string Value(string name) => row.Elements().FirstOrDefault(e => e.Name.LocalName == name)?.Value.Trim() ?? "";
-            var url = row.Elements().FirstOrDefault(e => e.Name.LocalName == "enclosure")?.Attribute("url")?.Value ?? "";
+            var sources = row.Descendants().Where(e => e.Name.LocalName is "enclosure" or "content")
+                .Select(e => (Url: e.Attribute("url")?.Value ?? "", Type: e.Attribute("type")?.Value ?? ""))
+                .Where(e => Uri.TryCreate(e.Url, UriKind.Absolute, out var address) && address.Scheme is "http" or "https")
+                .ToArray();
+            var audio = sources.FirstOrDefault(e => e.Type.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ||
+                Path.GetExtension(new Uri(e.Url).AbsolutePath).ToLowerInvariant() is ".mp3" or ".m4a" or ".ogg");
+            var video = sources.FirstOrDefault(e => e.Type.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ||
+                Path.GetExtension(new Uri(e.Url).AbsolutePath).ToLowerInvariant() is ".mp4" or ".m4v" or ".webm");
+            var source = audio.Url is not null ? audio : video.Url is not null ? video : sources.FirstOrDefault();
+            var url = source.Url ?? "";
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) continue;
             var title = Value("title");
             if (title.Length == 0) continue;
             var guid = Value("guid");
             result.Add(new MediaItem(Id(podcast.Id + "\n" + (guid.Length > 0 ? guid : url)), title,
                 podcast.Name, MediaKind.Podcast, url, podcast.Logo, ParentSeriesId: podcast.Id,
-                PublishedAt: PublicationDate(Value("pubDate"))));
+                PublishedAt: PublicationDate(Value("pubDate")), PodcastVideoUrl: video.Url ?? "", MediaType: source.Type ?? "",
+                PodcastAudioUrl: url));
         }
         return result.DistinctBy(e => e.Id).ToArray();
     }

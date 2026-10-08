@@ -56,6 +56,8 @@ public sealed class ProfilePage : LocalizedPage
         [
             Tile("Perfis de utilizador", FaIcons.Users, () => Navigation.PushAsync(new UserProfilesPage(changeProfile))),
             Tile("Podcasts favoritos e ouvidos", FaIcons.Podcast, () => Navigation.PushAsync(new PodcastsPage(favoritesOnly: true))),
+            Tile("Continuar a ouvir", FaIcons.CirclePlay, () => Navigation.PushAsync(new PodcastsPage(continuing: true))),
+            Tile("Definições dos podcasts", FaIcons.Gear, () => Navigation.PushAsync(new PodcastSettingsPage())),
             Tile("Sincronização e cópia de segurança", FaIcons.CloudArrowUp, () => Navigation.PushAsync(new BackupPage())),
             Tile("Lembretes de programas", FaIcons.Bell, () => Navigation.PushAsync(new RemindersPage())),
             Tile("Gravações DVR", FaIcons.RecordVinyl, () => Navigation.PushAsync(new RecordingsPage())),

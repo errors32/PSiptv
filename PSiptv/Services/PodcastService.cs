@@ -7,12 +7,13 @@ namespace PSiptv.Services;
 public static class PodcastService
 {
     private static readonly HttpClient client = new() { Timeout = TimeSpan.FromSeconds(20), MaxResponseContentBufferSize = 8 * 1024 * 1024 };
-    private static readonly Dictionary<string, (DateTimeOffset Date, IReadOnlyList<MediaItem> Items)> cache = [];
+    public static string SearchCacheKey(string query) => "search:" + (string.IsNullOrWhiteSpace(query) ? "Portugal" : query.Trim());
 
-    public static async Task<IReadOnlyList<MediaItem>> SearchAsync(string query, CancellationToken token)
+    public static async Task<IReadOnlyList<MediaItem>> SearchAsync(string query, CancellationToken token, bool refresh = false)
     {
         query = string.IsNullOrWhiteSpace(query) ? "Portugal" : query.Trim();
-        if (cache.TryGetValue(query, out var saved) && DateTimeOffset.UtcNow - saved.Date < TimeSpan.FromHours(12)) return saved.Items;
+        var saved = await PodcastCacheService.ReadAsync(SearchCacheKey(query), token);
+        if (!refresh && saved is not null && DateTimeOffset.UtcNow - saved.FetchedAt < TimeSpan.FromHours(12)) return saved.Items;
         var json = await client.GetStringAsync("https://itunes.apple.com/search?media=podcast&entity=podcast&country=PT&limit=100&term=" +
             Uri.EscapeDataString(query), token);
         using var document = JsonDocument.Parse(json);
@@ -29,13 +30,28 @@ public static class PodcastService
                 feed, Text("artworkUrl600"), HasEpisodes: true));
         }
         var items = result.DistinctBy(e => e.Id).ToArray();
-        cache[query] = (DateTimeOffset.UtcNow, items);
+        await PodcastCacheService.SaveAsync(SearchCacheKey(query), items, token);
         return items;
     }
 
-    public static async Task<IReadOnlyList<MediaItem>> EpisodesAsync(MediaItem podcast, CancellationToken token)
-        => PodcastFeed.Parse(await client.GetStringAsync(WebAddress.Require(podcast.Url), token), podcast);
+    public static async Task<IReadOnlyList<MediaItem>> EpisodesAsync(MediaItem podcast, CancellationToken token, bool refresh = false)
+    {
+        var saved = await PodcastCacheService.ReadAsync(podcast.Url, token);
+        if (!refresh && saved is not null && DateTimeOffset.UtcNow - saved.FetchedAt < TimeSpan.FromMinutes(10)) return saved.Items;
+        var episodes = PodcastFeed.Parse(await client.GetStringAsync(WebAddress.Require(podcast.Url), token), podcast);
+        await PodcastCacheService.SaveAsync(podcast.Url, episodes, token);
+        return episodes;
+    }
 
-    public static Task OpenAsync(Page owner, MediaItem item) => item.HasEpisodes
-        ? owner.Navigation.PushAsync(new PodcastsPage(item)) : PlaybackService.PlayAsync(owner, item);
+    public static async Task OpenAsync(Page owner, MediaItem item)
+    {
+        if (item.HasEpisodes) { await owner.Navigation.PushAsync(new PodcastsPage(item)); return; }
+        var snapshot = await FavoritesService.SnapshotAsync();
+        var resume = PodcastPolicy.ResumePosition(snapshot?.PodcastProgress?.GetValueOrDefault(item.Id),
+            snapshot?.HeardEpisodes.ContainsKey(item.Id) == true);
+        if (AppServices.ActiveAccount is { } account &&
+            await OfflineDownloadService.FindAsync(account.Id, UserProfileService.Active.Id, item) is { IsComplete: true } download)
+            item = OfflineDownloadService.PlaybackItem(download);
+        await PlaybackService.PlayAsync(owner, item, resume: resume);
+    }
 }

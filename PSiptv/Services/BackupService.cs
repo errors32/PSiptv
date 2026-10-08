@@ -22,7 +22,8 @@ public static class BackupService
             var reminders = await ReminderService.ExportAsync(account.Id, profile.Id);
             var seriesRules = await DvrService.ExportSeriesRulesAsync(account.Id, profile.Id);
             if (favorites.Count > 0 || history.Count > 0 || reminders.Count > 0 || seriesRules.Count > 0)
-                personal.Add(new(profile.Id, account.Id, favorites, history, reminders, seriesRules, snapshot.HeardEpisodes));
+                personal.Add(new(profile.Id, account.Id, favorites, history, reminders, seriesRules, snapshot.HeardEpisodes,
+                    snapshot.PodcastProgress, snapshot.PodcastVisits));
         }
 
         var catalogOptions = new Dictionary<string, string>();
@@ -71,7 +72,8 @@ public static class BackupService
             var localFavorites = await FavoritesService.ExportAsync(data.AccountId, data.ProfileId);
             var mergedFavorites = localFavorites.Concat(data.Favorites)
                 .GroupBy(entry => entry.Key).Select(group => group.Last()).ToArray();
-            await FavoritesService.ImportAsync(data.AccountId, data.ProfileId, mergedFavorites, data.HeardEpisodes);
+            await FavoritesService.ImportAsync(data.AccountId, data.ProfileId, mergedFavorites, data.HeardEpisodes,
+                data.PodcastProgress, data.PodcastVisits);
             var localHistory = await HistoryService.ExportAsync(data.AccountId, data.ProfileId);
             var mergedHistory = localHistory.Concat(data.History)
                 .GroupBy(entry => CatalogPreferences.ItemKey(entry.Item))
@@ -179,7 +181,9 @@ public static class BackupService
     private sealed record ProfileBackupData(string ProfileId, string AccountId,
         IReadOnlyList<FavoriteEntry> Favorites, IReadOnlyList<WatchEntry> History,
         IReadOnlyList<ProgrammeReminder>? Reminders, IReadOnlyList<DvrSeriesRule>? SeriesRules = null,
-        IReadOnlyDictionary<string, PodcastHeardEntry>? HeardEpisodes = null);
+        IReadOnlyDictionary<string, PodcastHeardEntry>? HeardEpisodes = null,
+        IReadOnlyDictionary<string, PodcastPlaybackEntry>? PodcastProgress = null,
+        IReadOnlyDictionary<string, DateTimeOffset>? PodcastVisits = null);
     private sealed record BackupSettings(bool Pip, string StreamFormat, bool AutoPlay, int AutoPlaySeconds,
         bool AutoClearCache, bool Subtitles, bool Clock12, string UserAgent, int BufferSeconds,
         bool NetworkSpeed, string Decoder, bool OpenSl, bool OpenGl, string Language, string Theme,

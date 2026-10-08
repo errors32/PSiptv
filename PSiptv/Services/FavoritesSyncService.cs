@@ -10,13 +10,24 @@ public static class FavoritesSyncService
 {
     private static int attempted;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly SemaphoreSlim gate = new(1);
+    public static string Status => Preferences.Default.Get("podcast-sync-status." +
+        (AppServices.ActiveAccount is { } account ? UserProfileService.Scope(account.Id) : ""),
+        LanguageService.Text("Ainda não foi efetuada uma sincronização."));
 
     public static async Task OnStartupAsync()
     {
         if (AppServices.ActiveAccount is not { } account || Interlocked.Exchange(ref attempted, 1) != 0) return;
+        await SynchronizeAsync();
+    }
+
+    public static async Task SynchronizeAsync()
+    {
+        if (AppServices.ActiveAccount is not { } account || !await gate.WaitAsync(0)) return;
         var session = AppServices.SessionVersion;
         var profileId = UserProfileService.Active.Id;
         var profileKey = RemoteControlService.CurrentProfileKey;
+        var scope = UserProfileService.Scope(account.Id, profileId);
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(7));
@@ -28,10 +39,23 @@ public static class FavoritesSyncService
                 { System.Diagnostics.Debug.WriteLine(ex); return null; }
             }));
             var newest = snapshots.Where(s => s is not null).OrderByDescending(s => s!.ModifiedAt).FirstOrDefault();
-            if (newest is null || session != AppServices.SessionVersion || profileKey != RemoteControlService.CurrentProfileKey) return;
-            await FavoritesService.ImportNewerAsync(account, profileId, newest);
+            if (session != AppServices.SessionVersion || profileKey != RemoteControlService.CurrentProfileKey) return;
+            if (newest is null)
+                Preferences.Default.Set("podcast-sync-status." + scope, LanguageService.Text("Nenhuma aplicação compatível encontrada na rede."));
+            else
+            {
+                var updated = await FavoritesService.ImportNewerAsync(account, profileId, newest);
+                Preferences.Default.Set("podcast-sync-status." + scope,
+                    DateTimeOffset.Now.ToString("dd/MM/yyyy HH:mm") + " · " +
+                    LanguageService.Text(updated ? "Favoritos e progresso atualizados." : "Verificado: os dados locais estão atualizados."));
+            }
         }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+            Preferences.Default.Set("podcast-sync-status." + scope, LanguageService.Text("Não foi possível sincronizar. Tente novamente."));
+        }
+        finally { gate.Release(); }
     }
 
     private static async Task<FavoriteSnapshot?> ReadAsync(LanRemoteDevice device, string profileKey, CancellationToken token)

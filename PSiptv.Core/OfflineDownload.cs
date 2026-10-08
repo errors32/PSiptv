@@ -17,7 +17,7 @@ public sealed record OfflineDownload(
     string FileName = "",
     string Error = "",
     DateTimeOffset? CreatedAt = null,
-    DateTimeOffset? UpdatedAt = null)
+    DateTimeOffset? UpdatedAt = null, bool Automatic = false)
 {
     public double Progress => TotalBytes is > 0 ? Math.Clamp((double)BytesDownloaded / TotalBytes.Value, 0, 1) : 0;
     public bool IsComplete => State == OfflineDownloadState.Completed && FileName.Length > 0;

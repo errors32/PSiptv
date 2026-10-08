@@ -6,8 +6,11 @@ namespace PSiptv.Core;
 
 public sealed record FavoriteEntry(string Key, MediaItem Item);
 public sealed record PodcastHeardEntry(DateTimeOffset HeardAt, string PodcastId);
+public sealed record PodcastPlaybackEntry(MediaItem Item, double Position, double Duration, DateTimeOffset UpdatedAt);
 public sealed record FavoriteSnapshot(DateTimeOffset ModifiedAt, IReadOnlyList<FavoriteEntry> Entries,
-    IReadOnlyDictionary<string, PodcastHeardEntry> HeardEpisodes);
+    IReadOnlyDictionary<string, PodcastHeardEntry> HeardEpisodes,
+    IReadOnlyDictionary<string, PodcastPlaybackEntry>? PodcastProgress = null,
+    IReadOnlyDictionary<string, DateTimeOffset>? PodcastVisits = null);
 
 public sealed class FavoriteStore(
     Func<string, Task<string?>> read,
@@ -47,7 +50,12 @@ public sealed class FavoriteStore(
             var key = ItemKey(account, item);
             entries.RemoveAll(e => e.Key == key);
             if (favorite) entries.Add(new(key, item));
-            await SaveAsync(scope, new(NextDate(previous.ModifiedAt), entries, Prune(previous.HeardEpisodes, entries)));
+            var visits = (previous.PodcastVisits ?? new Dictionary<string, DateTimeOffset>()).ToDictionary();
+            if (favorite && item.HasEpisodes && PodcastFeed.IsPodcast(item) && !visits.ContainsKey(item.Id))
+                visits[item.Id] = DateTimeOffset.UtcNow;
+            await SaveAsync(scope, previous with { ModifiedAt = NextDate(previous.ModifiedAt), Entries = entries,
+                HeardEpisodes = Prune(previous.HeardEpisodes, entries), PodcastProgress = PruneProgress(previous.PodcastProgress, entries),
+                PodcastVisits = visits });
             return entries;
         }
         finally { gate.Release(); }
@@ -61,7 +69,9 @@ public sealed class FavoriteStore(
     }
 
     public async Task ReplaceAsync(string accountId, IReadOnlyList<FavoriteEntry> entries,
-        IReadOnlyDictionary<string, PodcastHeardEntry>? heard = null)
+        IReadOnlyDictionary<string, PodcastHeardEntry>? heard = null,
+        IReadOnlyDictionary<string, PodcastPlaybackEntry>? progress = null,
+        IReadOnlyDictionary<string, DateTimeOffset>? visits = null)
     {
         await gate.WaitAsync();
         try
@@ -69,7 +79,14 @@ public sealed class FavoriteStore(
             var previous = await ReadSnapshotAsync(accountId);
             var merged = previous.HeardEpisodes.Concat(heard ?? new Dictionary<string, PodcastHeardEntry>())
                 .GroupBy(e => e.Key).ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Value.HeardAt).First().Value);
-            await SaveAsync(accountId, new(NextDate(previous.ModifiedAt), entries, Prune(merged, entries)));
+            var positions = (previous.PodcastProgress ?? new Dictionary<string, PodcastPlaybackEntry>())
+                .Concat(progress ?? new Dictionary<string, PodcastPlaybackEntry>()).GroupBy(e => e.Key)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Value.UpdatedAt).First().Value);
+            var feedVisits = (previous.PodcastVisits ?? new Dictionary<string, DateTimeOffset>())
+                .Concat(visits ?? new Dictionary<string, DateTimeOffset>()).GroupBy(e => e.Key)
+                .ToDictionary(g => g.Key, g => g.Max(e => e.Value));
+            await SaveAsync(accountId, new(NextDate(previous.ModifiedAt), entries, Prune(merged, entries),
+                PruneProgress(positions, entries), feedVisits));
         }
         finally { gate.Release(); }
     }
@@ -93,7 +110,8 @@ public sealed class FavoriteStore(
             if (snapshot.ModifiedAt <= local.ModifiedAt) return false;
             var entries = snapshot.Entries.Select(e => new FavoriteEntry(ItemKey(account, e.Item), e.Item))
                 .DistinctBy(e => e.Key).ToArray();
-            await SaveAsync(scope, snapshot with { Entries = entries, HeardEpisodes = Prune(snapshot.HeardEpisodes, entries) });
+            await SaveAsync(scope, snapshot with { Entries = entries, HeardEpisodes = Prune(snapshot.HeardEpisodes, entries),
+                PodcastProgress = PruneProgress(snapshot.PodcastProgress, entries) });
             return true;
         }
         finally { gate.Release(); }
@@ -109,6 +127,7 @@ public sealed class FavoriteStore(
             var snapshot = await ReadSnapshotAsync(scope);
             var favorites = snapshot.Entries.Where(e => PodcastFeed.IsPodcast(e.Item)).Select(e => e.Item.Id).ToHashSet();
             var values = snapshot.HeardEpisodes.ToDictionary(e => e.Key, e => e.Value);
+            var progress = (snapshot.PodcastProgress ?? new Dictionary<string, PodcastPlaybackEntry>()).ToDictionary();
             var date = NextDate(snapshot.ModifiedAt);
             var changed = false;
             foreach (var episode in episodes)
@@ -116,11 +135,12 @@ public sealed class FavoriteStore(
                 if (!PodcastFeed.IsPodcast(episode) || episode.HasEpisodes ||
                     !favorites.Contains(episode.Id) && !favorites.Contains(episode.ParentSeriesId) ||
                     heard == values.ContainsKey(episode.Id)) continue;
-                if (heard) values[episode.Id] = new(date, episode.ParentSeriesId); else values.Remove(episode.Id);
+                if (heard) { values[episode.Id] = new(date, episode.ParentSeriesId); progress.Remove(episode.Id); }
+                else values.Remove(episode.Id);
                 changed = true;
             }
             if (!changed) return;
-            await SaveAsync(scope, snapshot with { ModifiedAt = date, HeardEpisodes = values });
+            await SaveAsync(scope, snapshot with { ModifiedAt = date, HeardEpisodes = values, PodcastProgress = progress });
         }
         finally { gate.Release(); }
     }
@@ -130,6 +150,50 @@ public sealed class FavoriteStore(
     {
         var ids = entries.Where(e => PodcastFeed.IsPodcast(e.Item)).Select(e => e.Item.Id).ToHashSet();
         return heard.Where(e => ids.Contains(e.Key) || ids.Contains(e.Value.PodcastId)).ToDictionary(e => e.Key, e => e.Value);
+    }
+
+    public async Task RecordPodcastAsync(string scope, MediaItem item, double position, double duration)
+    {
+        if (!PodcastFeed.IsPodcast(item) || item.HasEpisodes || !double.IsFinite(position) || !double.IsFinite(duration)) return;
+        await gate.WaitAsync();
+        try
+        {
+            var snapshot = await ReadSnapshotAsync(scope);
+            if (!snapshot.Entries.Any(e => e.Item.Id == item.Id || e.Item.Id == item.ParentSeriesId) ||
+                snapshot.HeardEpisodes.ContainsKey(item.Id)) return;
+            var values = (snapshot.PodcastProgress ?? new Dictionary<string, PodcastPlaybackEntry>()).ToDictionary();
+            position = Math.Clamp(position, 0, duration > 0 ? duration : double.MaxValue);
+            if (values.TryGetValue(item.Id, out var previous) && Math.Abs(previous.Position - position) < 1) return;
+            var date = NextDate(snapshot.ModifiedAt);
+            values[item.Id] = new(item, position, Math.Max(0, duration), date);
+            await SaveAsync(scope, snapshot with { ModifiedAt = date, PodcastProgress = values });
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task VisitPodcastAsync(string scope, string podcastId, DateTimeOffset date)
+    {
+        await gate.WaitAsync();
+        try
+        {
+            var snapshot = await ReadSnapshotAsync(scope);
+            if (!snapshot.Entries.Any(e => e.Item.Id == podcastId)) return;
+            var visits = (snapshot.PodcastVisits ?? new Dictionary<string, DateTimeOffset>()).ToDictionary();
+            if (visits.TryGetValue(podcastId, out var previous) && previous >= date) return;
+            visits[podcastId] = date;
+            await SaveAsync(scope, snapshot with { ModifiedAt = NextDate(snapshot.ModifiedAt), PodcastVisits = visits });
+        }
+        finally { gate.Release(); }
+    }
+
+    private static IReadOnlyDictionary<string, PodcastPlaybackEntry> PruneProgress(
+        IReadOnlyDictionary<string, PodcastPlaybackEntry>? progress, IReadOnlyList<FavoriteEntry> entries)
+    {
+        var ids = entries.Where(e => PodcastFeed.IsPodcast(e.Item)).Select(e => e.Item.Id).ToHashSet();
+        return (progress ?? new Dictionary<string, PodcastPlaybackEntry>()).Where(e =>
+            e.Value is not null && e.Value.Item is not null && PodcastFeed.IsPodcast(e.Value.Item) && !e.Value.Item.HasEpisodes &&
+            double.IsFinite(e.Value.Position) && double.IsFinite(e.Value.Duration) && e.Value.Position >= 0 &&
+            (ids.Contains(e.Key) || ids.Contains(e.Value.Item.ParentSeriesId))).ToDictionary();
     }
 
     private static DateTimeOffset NextDate(DateTimeOffset previous)

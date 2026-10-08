@@ -22,6 +22,7 @@ public sealed class PlayerPage : LocalizedPage
     private MediaItem current;
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? countdown;
+    private CancellationTokenSource? sleepTimer;
     private bool started;
     private bool fullscreen;
     private int guideRequest;
@@ -287,6 +288,48 @@ public sealed class PlayerPage : LocalizedPage
                 footer = Ui.Stack(message, nextMessage, cancelNext, actionScroll);
             }
         }
+        if (PodcastFeed.IsPodcast(item))
+        {
+            Button speed = null!;
+            speed = Ui.Button("1×", async () =>
+            {
+                var choices = new[] { "0.75×", "1×", "1.25×", "1.5×", "1.75×", "2×" };
+                var choice = await LanguageService.ActionSheetAsync(this, "Velocidade de reprodução", "Cancelar", null, choices);
+                var index = Array.IndexOf(choices, choice);
+                if (index >= 0)
+                {
+                    if (player.SetPodcastRate(new[] { .75f, 1f, 1.25f, 1.5f, 1.75f, 2f }[index])) speed.Text = choices[index];
+                    else await LanguageService.AlertAsync(this, "Velocidade de reprodução", "Este leitor não permite alterar a velocidade deste episódio.");
+                }
+            });
+            SemanticProperties.SetDescription(speed, LanguageService.Text("Velocidade de reprodução"));
+            var sleeper = IconButton(FaIcons.Clock, "Temporizador de reprodução", async () =>
+            {
+                var choices = new[] { "15 minutos", "30 minutos", "60 minutos", "Desligar temporizador" };
+                var choice = await LanguageService.ActionSheetAsync(this, "Temporizador de reprodução", "Cancelar", null, choices);
+                var index = Array.IndexOf(choices, choice);
+                if (index < 0) return;
+                sleepTimer?.Cancel(); sleepTimer?.Dispose(); sleepTimer = null;
+                if (index == 3) return;
+                message.Text = LanguageService.Format("Pausa automática dentro de {0} minutos.", new[] { 15, 30, 60 }[index]);
+                message.IsVisible = true;
+                sleepTimer = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+                _ = PauseAfterAsync(TimeSpan.FromMinutes(new[] { 15, 30, 60 }[index]), sleepTimer.Token);
+            });
+            var videoMode = false;
+            Button videoButton = null!;
+            videoButton = Ui.Button("Vídeo", async () =>
+            {
+                videoMode = !videoMode;
+                await player.SetPodcastVideoAsync(videoMode);
+                videoButton.Text = LanguageService.Text(videoMode ? "Áudio" : "Vídeo");
+            });
+            videoButton.IsVisible = item.PodcastVideoUrl.Length > 0 && !DeviceProfile.IsAutomotive;
+            var podcastActions = new HorizontalStackLayout { Spacing = 8,
+                Children = { Ui.Button("−15 s", () => player.SeekByAsync(-15)),
+                    Ui.Button("+30 s", () => player.SeekByAsync(30)), speed, sleeper, videoButton } };
+            footer = Ui.Stack(footer, new ScrollView { Orientation = ScrollOrientation.Horizontal, Content = podcastActions });
+        }
         var videoHost = new Grid
         {
             BackgroundColor = Colors.Black,
@@ -356,7 +399,14 @@ public sealed class PlayerPage : LocalizedPage
         if (started) return; started = true;
         try
         {
-            await player.PlayAsync(current, resume);
+            var start = resume;
+            if (PodcastFeed.IsPodcast(current) && start <= 0)
+            {
+                var snapshot = await FavoritesService.SnapshotAsync();
+                start = PodcastPolicy.ResumePosition(snapshot?.PodcastProgress?.GetValueOrDefault(current.Id),
+                    snapshot?.HeardEpisodes.ContainsKey(current.Id) == true);
+            }
+            await player.PlayAsync(current, start);
             if (liveChannel) await LoadGuideAsync();
         }
         catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
@@ -545,6 +595,17 @@ public sealed class PlayerPage : LocalizedPage
             Dispatcher.Dispatch(() => cleanFirstAction.Focus());
     }
     private void Stop() { lifetime.Cancel(); countdown?.Cancel(); player.Stop(); }
+    private async Task PauseAfterAsync(TimeSpan delay, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(delay, token);
+            player.Pause();
+            message.Text = LanguageService.Text("Reprodução pausada pelo temporizador.");
+            message.IsVisible = true;
+        }
+        catch (OperationCanceledException) { }
+    }
     protected override void OnDisappearing()
     {
         if (!PictureInPictureService.IsActive) { Stop(); ScreenOrientationService.SetFullscreen(false); }

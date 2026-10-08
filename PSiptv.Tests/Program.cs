@@ -554,6 +554,81 @@ Check(JsonSerializer.Deserialize<MediaItem>(JsonSerializer.Serialize(datedEpisod
 Check(JsonSerializer.Deserialize<MediaItem>("{\"Id\":\"old-podcast\",\"Name\":\"Old\",\"Category\":\"\",\"Kind\":3}")!.PublishedAt is null,
     "Episódios guardados em versões anteriores continuam legíveis sem data");
 var podcastScope = ProfileStorageScope.ForAccount(account.Id, "podcast-profile");
+var dualEpisode = PodcastFeed.Parse("""
+    <rss xmlns:media="http://search.yahoo.com/mrss/"><channel><item><title>Áudio e vídeo</title><guid>dual</guid>
+    <enclosure url="https://example.test/video.mp4" type="video/mp4" />
+    <media:content url="https://example.test/audio.mp3" type="audio/mpeg" />
+    <media:content url="javascript:alert(1)" type="video/mp4" />
+    </item></channel></rss>
+    """, podcast).Single();
+Check(dualEpisode.Url == "https://example.test/audio.mp3" && dualEpisode.PodcastAudioUrl == dualEpisode.Url &&
+    dualEpisode.PodcastVideoUrl == "https://example.test/video.mp4" && dualEpisode.MediaType == "audio/mpeg",
+    "RSS escolhe áudio por defeito, preserva vídeo e rejeita endereços inseguros");
+var videoEpisode = PodcastFeed.Parse("""
+    <rss><channel><item><title>Vídeo</title><enclosure url="https://example.test/video.mp4" type="video/mp4" /></item></channel></rss>
+    """, podcast).Single();
+Check(videoEpisode.PodcastVideoUrl == videoEpisode.Url && videoEpisode.PodcastAudioUrl == videoEpisode.Url,
+    "Podcasts apenas com vídeo permitem modo áudio do mesmo conteúdo");
+Check(JsonSerializer.Deserialize<MediaItem>(JsonSerializer.Serialize(dualEpisode)) == dualEpisode,
+    "Alternativas áudio e vídeo são preservadas na serialização");
+var defaultPodcastOptions = new PodcastOptions();
+Check(!defaultPodcastOptions.AutomaticDownloads && defaultPodcastOptions.WifiOnly &&
+    !PodcastPolicy.CanDownloadAutomatically(defaultPodcastOptions, true, true),
+    "Downloads automáticos estão desligados por defeito mesmo em Wi-Fi");
+Check(JsonSerializer.Deserialize<PodcastOptions>("{}") is { AutomaticDownloads: false, WifiOnly: true },
+    "Definições ausentes mantêm downloads desligados e Wi-Fi como predefinição");
+Check(PodcastPolicy.CanDownloadAutomatically(defaultPodcastOptions with { AutomaticDownloads = true }, true, true) &&
+    !PodcastPolicy.CanDownloadAutomatically(defaultPodcastOptions with { AutomaticDownloads = true }, true, false) &&
+    !PodcastPolicy.CanDownloadAutomatically(defaultPodcastOptions with { AutomaticDownloads = true }, false, true) &&
+    PodcastPolicy.CanDownloadAutomatically(defaultPodcastOptions with { AutomaticDownloads = true, WifiOnly = false }, true, false),
+    "Downloads automáticos respeitam ativação explícita, Internet e restrição Wi-Fi");
+var newsDate = new DateTimeOffset(2026, 10, 8, 7, 0, 0, TimeSpan.Zero);
+var newsNow = newsDate.AddHours(2);
+Check(PodcastPolicy.IsNew(datedEpisodes[1], newsDate, newsNow) &&
+    !PodcastPolicy.IsNew(datedEpisodes[2], newsDate, newsNow) &&
+    !PodcastPolicy.IsNew(datedEpisodes[1], null, newsNow) &&
+    !PodcastPolicy.IsNew(datedEpisodes[0], newsDate, newsNow),
+    "Indicador de novidades respeita última visita e datas ausentes");
+Check(PodcastPolicy.AutomaticCandidates(datedEpisodes, new Dictionary<string, PodcastHeardEntry>(), null).Count == 1,
+    "Primeira ativação não descarrega todo o histórico do feed");
+Check(PodcastPolicy.AutomaticCandidates(datedEpisodes,
+    new Dictionary<string, PodcastHeardEntry> { [datedEpisodes[1].Id] = new(newsNow, podcast.Id) }, newsDate)
+    .Select(e => e.Id).SequenceEqual(new[] { datedEpisodes[3].Id }),
+    "Downloads novos excluem episódios antigos, sem data e já ouvidos");
+var progressScope = ProfileStorageScope.ForAccount(account.Id, "podcast-progress");
+await favorites.RecordPodcastAsync(progressScope, podcastEpisode, 90, 1000);
+Check((await favorites.SnapshotAsync(progressScope)).PodcastProgress is null,
+    "Progresso de podcasts fora dos favoritos não é guardado");
+await favorites.SetAsync(account, podcast, true, progressScope);
+await favorites.RecordPodcastAsync(progressScope, podcastEpisode, 90, 1000);
+var savedProgress = await NewFavorites().SnapshotAsync(progressScope);
+Check(savedProgress.PodcastProgress![podcastEpisode.Id].Position == 90 &&
+    PodcastPolicy.ResumePosition(savedProgress.PodcastProgress[podcastEpisode.Id], false) == 90 &&
+    (await favorites.SnapshotAsync(podcastScope)).PodcastProgress is null,
+    "Posição de podcasts persiste e é isolada por perfil");
+await favorites.RecordPodcastAsync(progressScope, podcastEpisode, double.NaN, 1000);
+Check((await favorites.SnapshotAsync(progressScope)).ModifiedAt == savedProgress.ModifiedAt,
+    "Progresso inválido não altera dados nem data de sincronização");
+Check(PodcastPolicy.ResumePosition(savedProgress.PodcastProgress[podcastEpisode.Id], true) == 0 &&
+    PodcastPolicy.ResumePosition(savedProgress.PodcastProgress[podcastEpisode.Id] with { Position = 999 }, false) == 0,
+    "Episódios ouvidos ou terminados recomeçam do início");
+var visitedAt = DateTimeOffset.UtcNow.AddMinutes(1);
+await favorites.VisitPodcastAsync(progressScope, podcast.Id, visitedAt);
+var visited = await favorites.SnapshotAsync(progressScope);
+Check(visited.PodcastVisits![podcast.Id] == visitedAt && visited.PodcastProgress![podcastEpisode.Id].Position == 90,
+    "Última visita mantém a posição de reprodução");
+var incomingProgress = visited with { ModifiedAt = visited.ModifiedAt.AddMinutes(1) };
+Check(await favorites.ImportNewerAsync("podcast-progress-target", account, incomingProgress) &&
+    (await favorites.SnapshotAsync("podcast-progress-target")).PodcastProgress![podcastEpisode.Id].Position == 90,
+    "Sincronização transporta o progresso de reprodução e conserva a data remota");
+await favorites.SetHeardAsync(progressScope, podcastEpisode, true);
+Check((await favorites.SnapshotAsync(progressScope)).PodcastProgress!.Count == 0,
+    "Marcar ouvido remove o episódio da lista de continuação");
+await favorites.SetHeardAsync(progressScope, podcastEpisode, false);
+await favorites.RecordPodcastAsync(progressScope, podcastEpisode, 120, 1000);
+await favorites.SetAsync(account, podcast, false, progressScope);
+Check((await favorites.SnapshotAsync(progressScope)).PodcastProgress!.Count == 0,
+    "Remover podcast dos favoritos elimina o progresso associado");
 Check(OfflineDownloadPolicy.CanDownload(podcastEpisode) && !OfflineDownloadPolicy.CanDownload(podcast) &&
     OfflineDownloadPolicy.ExtensionFor(podcastEpisode with { Url = "https://example.test/audio?id=1" }) == ".mp3",
     "Downloads de podcasts aceitam episódios e escolhem MP3, excluindo subscrições");
