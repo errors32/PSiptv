@@ -63,6 +63,7 @@ public sealed class PlaybackView : ContentView
     private readonly Grid controls;
     private CancellationTokenSource? controlsHiding;
 #if ANDROID
+    private readonly RadioSpectrumView radioSpectrum = new();
     private CancellationTokenSource? pipSurfaceRefreshing;
     private AndroidVideoSurfaceCallback? androidVideoSurfaceCallback;
     private LibVLCSharp.Platforms.Android.VideoView? observedNativeVideo;
@@ -161,6 +162,9 @@ public sealed class PlaybackView : ContentView
 #endif
         var grid = new Grid();
         grid.Add(video);
+#if ANDROID
+        grid.Add(radioSpectrum);
+#endif
         grid.Add(externalSubtitle);
         pause = Ui.Button("", TogglePlaybackAsync);
         pause.ImageSource = Ui.FontIconSource(FaIcons.Play, 20);
@@ -293,7 +297,9 @@ public sealed class PlaybackView : ContentView
                 ApplyAspectRatio();
 #if ANDROID
                 _ = ReapplyAspectRatioAfterLayoutAsync(generation);
-                _ = RefreshVideoSurfaceAfterOpenAsync(generation);
+                if (current is { } playingItem && PortugueseRadioService.IsRadio(playingItem))
+                    _ = radioSpectrum.StartAsync();
+                else _ = RefreshVideoSurfaceAfterOpenAsync(generation);
 #endif
                 MediaOpened?.Invoke(this, EventArgs.Empty);
                 if (this.recordHistory && current is { } first) { try { await HistoryService.RecordAsync(accountId, session, first, Position); } catch { } }
@@ -486,6 +492,13 @@ public sealed class PlaybackView : ContentView
             seek.IsVisible = !timeshiftEnabled;
             bufferingSince = 0;
             observedState = null;
+#if ANDROID
+            var radio = PortugueseRadioService.IsRadio(item);
+            // Keep LibVLC's native video host attached for audio-only streams.
+            // The spectrum is an opaque overlay on top of it.
+            video.IsVisible = true;
+            radioSpectrum.IsVisible = radio;
+#endif
             video.MediaPlayer = player;
 #if ANDROID
             EnsureAndroidVideoSurfaceCallback();
@@ -1236,6 +1249,7 @@ public sealed class PlaybackView : ContentView
 #if ANDROID || WINDOWS
 #if ANDROID
         pipSurfaceRefreshing?.Cancel();
+        radioSpectrum.Stop();
 #endif
         timeshiftOffsetSeconds = 0;
         timeshiftPausedAt = null;
