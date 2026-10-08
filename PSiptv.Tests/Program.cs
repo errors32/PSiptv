@@ -527,7 +527,57 @@ Check(PodcastFeed.Parse(podcastXml.Replace("audio.mp3", "changed.mp3"), podcast)
     "GUID mantém a identidade do episódio quando muda o áudio");
 Check(FavoriteStore.ItemKey(m3uAccount, podcastEpisode) == FavoriteStore.ItemKey(m3uAccount, podcastEpisode with { Url = "https://example.test/new.mp3" }),
     "Favoritos de podcasts usam identidade estável também em listas M3U");
+var datedEpisodes = PodcastFeed.Parse("""
+    <rss><channel>
+      <item><title>Sem data</title><guid>undated</guid><enclosure url="https://example.test/undated.mp3" /></item>
+      <item><title>Recente</title><guid>new</guid><pubDate>Thu, 08 Oct 2026 09:00:00 +0100</pubDate><enclosure url="https://example.test/new.mp3" /></item>
+      <item><title>Antigo</title><guid>old</guid><pubDate>Wed, 07 Oct 2026 23:00:00 -0200</pubDate><enclosure url="https://example.test/old.mp3" /></item>
+      <item><title>Mesma data</title><guid>same</guid><pubDate>Thu, 08 Oct 2026 08:00:00 GMT</pubDate><enclosure url="https://example.test/same.mp3" /></item>
+      <item><title>Data inválida</title><guid>invalid-date</guid><pubDate>not-a-date</pubDate><enclosure url="https://example.test/invalid-date.mp3" /></item>
+    </channel></rss>
+    """, podcast);
+Check(datedEpisodes[1].PublishedAt == new DateTimeOffset(2026, 10, 8, 8, 0, 0, TimeSpan.Zero) &&
+    datedEpisodes[2].PublishedAt == new DateTimeOffset(2026, 10, 8, 1, 0, 0, TimeSpan.Zero),
+    "Datas RSS reconhecem offsets positivos e negativos e comparam o instante correto");
+Check(datedEpisodes[3].PublishedAt == datedEpisodes[1].PublishedAt,
+    "Datas RSS aceitam GMT");
+Check(datedEpisodes[0].PublishedAt is null && datedEpisodes[4].PublishedAt is null,
+    "Datas ausentes ou inválidas não impedem a leitura de episódios");
+Check(PodcastFeed.OrderByDate(datedEpisodes, true).Select(e => e.Name).SequenceEqual(
+    new[] { "Recente", "Mesma data", "Antigo", "Sem data", "Data inválida" }),
+    "Ordenação mais recente preserva empates e coloca episódios sem data no fim");
+Check(PodcastFeed.OrderByDate(datedEpisodes, false).Select(e => e.Name).SequenceEqual(
+    new[] { "Antigo", "Recente", "Mesma data", "Sem data", "Data inválida" }),
+    "Ordenação mais antiga também coloca episódios sem data no fim");
+Check(JsonSerializer.Deserialize<MediaItem>(JsonSerializer.Serialize(datedEpisodes[1]))!.PublishedAt == datedEpisodes[1].PublishedAt,
+    "Data de lançamento acompanha a serialização de favoritos e sincronização");
+Check(JsonSerializer.Deserialize<MediaItem>("{\"Id\":\"old-podcast\",\"Name\":\"Old\",\"Category\":\"\",\"Kind\":3}")!.PublishedAt is null,
+    "Episódios guardados em versões anteriores continuam legíveis sem data");
 var podcastScope = ProfileStorageScope.ForAccount(account.Id, "podcast-profile");
+Check(OfflineDownloadPolicy.CanDownload(podcastEpisode) && !OfflineDownloadPolicy.CanDownload(podcast) &&
+    OfflineDownloadPolicy.ExtensionFor(podcastEpisode with { Url = "https://example.test/audio?id=1" }) == ".mp3",
+    "Downloads de podcasts aceitam episódios e escolhem MP3, excluindo subscrições");
+Check(OfflineDownloadPolicy.IsMp3Response(new Uri("https://example.test/audio"), "audio/mpeg") &&
+    OfflineDownloadPolicy.IsMp3Response(new Uri("https://example.test/audio.mp3"), "application/octet-stream") &&
+    !OfflineDownloadPolicy.IsMp3Response(new Uri("https://example.test/audio.mp3"), "audio/mp4") &&
+    !OfflineDownloadPolicy.IsMp3Response(new Uri("https://example.test/audio.m4a"), "application/octet-stream"),
+    "Download MP3 valida o formato e não renomeia M4A como MP3");
+var batchScope = ProfileStorageScope.ForAccount(account.Id, "batch-podcast-profile");
+await favorites.SetAsync(account, podcast, true, batchScope);
+var untrackedEpisode = podcastEpisode with { Id = "podcast-episode:untracked", ParentSeriesId = "podcast:other" };
+await favorites.SetHeardAsync(batchScope, [.. datedEpisodes, untrackedEpisode, podcast], true);
+var batchSnapshot = await favorites.SnapshotAsync(batchScope);
+Check(batchSnapshot.HeardEpisodes.Count == datedEpisodes.Count &&
+    batchSnapshot.HeardEpisodes.Values.All(e => e.HeardAt == batchSnapshot.ModifiedAt) &&
+    !batchSnapshot.HeardEpisodes.ContainsKey(untrackedEpisode.Id),
+    "Marcação em lote usa uma data única e guarda apenas episódios de favoritos");
+await favorites.SetHeardAsync(batchScope, datedEpisodes, true);
+Check((await favorites.SnapshotAsync(batchScope)).ModifiedAt == batchSnapshot.ModifiedAt,
+    "Marcar novamente episódios já ouvidos não altera a data de sincronização");
+await favorites.SetHeardAsync(batchScope, datedEpisodes, false);
+Check((await favorites.SnapshotAsync(batchScope)).HeardEpisodes.Count == 0 &&
+    (await favorites.SnapshotAsync(podcastScope)).HeardEpisodes.Count == 0,
+    "Marcação em lote é reversível e mantém o isolamento por perfil");
 await favorites.SetHeardAsync(podcastScope, podcastEpisode, true);
 Check((await favorites.SnapshotAsync(podcastScope)).HeardEpisodes.Count == 0,
     "Podcasts fora dos favoritos não guardam estado ouvido");

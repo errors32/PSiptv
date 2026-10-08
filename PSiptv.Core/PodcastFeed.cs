@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Globalization;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
@@ -28,8 +29,25 @@ public static class PodcastFeed
             if (title.Length == 0) continue;
             var guid = Value("guid");
             result.Add(new MediaItem(Id(podcast.Id + "\n" + (guid.Length > 0 ? guid : url)), title,
-                podcast.Name, MediaKind.Podcast, url, podcast.Logo, ParentSeriesId: podcast.Id));
+                podcast.Name, MediaKind.Podcast, url, podcast.Logo, ParentSeriesId: podcast.Id,
+                PublishedAt: PublicationDate(Value("pubDate"))));
         }
         return result.DistinctBy(e => e.Id).ToArray();
+    }
+
+    private static DateTimeOffset? PublicationDate(string value)
+    {
+        // RSS commonly uses an RFC 822 numeric offset without a colon.
+        var normalized = System.Text.RegularExpressions.Regex.Replace(value, @"([+-]\d{2})(\d{2})$", "$1:$2");
+        return DateTimeOffset.TryParse(normalized, CultureInfo.InvariantCulture,
+            DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal, out var date) ? date : null;
+    }
+
+    public static IReadOnlyList<MediaItem> OrderByDate(IEnumerable<MediaItem> episodes, bool newestFirst)
+    {
+        // Undated episodes always follow dated ones; ties keep the original feed order.
+        var datedFirst = episodes.OrderByDescending(item => item.PublishedAt.HasValue);
+        return (newestFirst ? datedFirst.ThenByDescending(item => item.PublishedAt) :
+            datedFirst.ThenBy(item => item.PublishedAt)).ToArray();
     }
 }

@@ -86,7 +86,7 @@ public sealed class LiveTvView : ContentView
                 name.LineBreakMode = LineBreakMode.TailTruncation;
                 name.SetBinding(Label.TextProperty, nameof(MediaItem.Name));
                 var top = new Grid { ColumnDefinitions = [new ColumnDefinition(GridLength.Star)] };
-                var radioIcon = Ui.FontIcon(FaIcons.Music, 34);
+                var radioIcon = Ui.FontIcon(FaIcons.Radio, 34);
                 radioIcon.IsVisible = false;
                 logo.BindingContextChanged += (_, _) =>
                 {
@@ -113,7 +113,7 @@ public sealed class LiveTvView : ContentView
         cleanCardsTemplate = new DataTemplate(() =>
         {
             var logo = new LogoImage { WidthRequest = 52, HeightRequest = 46, Aspect = Aspect.AspectFit };
-            var radioIcon = Ui.FontIcon(FaIcons.Music, 24);
+            var radioIcon = Ui.FontIcon(FaIcons.Radio, 24);
             radioIcon.IsVisible = false;
             logo.BindingContextChanged += (_, _) =>
             {
@@ -303,27 +303,30 @@ public sealed class LiveTvView : ContentView
         SemanticProperties.SetDescription(multiviewButton, LanguageService.Text("Abrir Multiview"));
         ToolTipProperties.SetText(multiviewButton, LanguageService.Text("Abrir Multiview"));
         radioButton = Ui.Button("", ToggleRadioModeAsync);
-        radioButton.WidthRequest = Ui.IsTelevision ? 116 : 94;
+        radioButton.WidthRequest = 48;
         radioButton.MinimumHeightRequest = 42;
         radioButton.Padding = 8;
-        radioButton.ContentLayout = new Button.ButtonContentLayout(Button.ButtonContentLayout.ImagePosition.Left, 3);
+        radioButton.ContentLayout = new Button.ButtonContentLayout(Button.ButtonContentLayout.ImagePosition.Left, 0);
         UpdateRadioButton();
         var groupHeader = new Grid
         {
             ColumnSpacing = 8,
-            ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)]
+            ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto),
+                new(GridLength.Auto), new(GridLength.Auto)]
         };
         groupHeader.Add(groupName);
         groupHeader.Add(viewModeButton, 1);
         groupHeader.Add(multiviewButton, 2);
         groupHeader.Add(radioButton, 3);
-        var podcasts = Ui.Button("Podcasts", () => Navigation.PushAsync(new PodcastsPage(favoritesOnly: favoritesSection)));
-        podcasts.ImageSource = Ui.FontIconSource(FaIcons.Music, 19);
+        var podcasts = Ui.Button("", () => Navigation.PushAsync(new PodcastsPage(favoritesOnly: favoritesSection)));
+        podcasts.ImageSource = Ui.FontIconSource(FaIcons.Podcast, 19);
+        podcasts.WidthRequest = 48;
         podcasts.MinimumHeightRequest = 42;
-        groupHeader.RowDefinitions.Add(new(GridLength.Auto));
-        groupHeader.RowDefinitions.Add(new(GridLength.Auto));
-        groupHeader.Add(podcasts, 0, 1);
-        Grid.SetColumnSpan(podcasts, 4);
+        podcasts.Padding = 8;
+        podcasts.ContentLayout = new Button.ButtonContentLayout(Button.ButtonContentLayout.ImagePosition.Left, 0);
+        SemanticProperties.SetDescription(podcasts, LanguageService.Text("Mostrar podcasts"));
+        ToolTipProperties.SetText(podcasts, LanguageService.Text("Mostrar podcasts"));
+        groupHeader.Add(podcasts, 4);
         radioSearch.Placeholder = LanguageService.Text("Pesquisar rádios");
         radioSearch.SetDynamicResource(SearchBar.TextColorProperty, "Ink");
         radioSearch.SetDynamicResource(SearchBar.PlaceholderColorProperty, "Muted");
@@ -461,8 +464,8 @@ public sealed class LiveTvView : ContentView
 
     private void UpdateRadioButton()
     {
-        radioButton.Text = LanguageService.Text(radioMode ? "TV" : "Rádios");
-        radioButton.ImageSource = Ui.FontIconSource(radioMode ? FaIcons.Display : FaIcons.Music, 19);
+        radioButton.Text = "";
+        radioButton.ImageSource = Ui.FontIconSource(radioMode ? FaIcons.Display : FaIcons.Radio, 19);
         var description = LanguageService.Text(radioMode ? "Mostrar canais de TV" : "Mostrar rádios portuguesas");
         SemanticProperties.SetDescription(radioButton, description);
         ToolTipProperties.SetText(radioButton, description);

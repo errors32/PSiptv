@@ -37,6 +37,13 @@ internal static class FaIcons
     public const string Database = "\uf1c0";
     public const string GaugeHigh = "\uf625";
     public const string Music = "\uf001";
+    public const string Radio = "\uf8d7";
+    public const string Podcast = "\uf2ce";
+    public const string Check = "\uf00c";
+    public const string CheckDouble = "\uf560";
+    public const string Eye = "\uf06e";
+    public const string EyeSlash = "\uf070";
+    public const string RotateLeft = "\uf2ea";
     public const string VolumeHigh = "\uf028";
     public const string VolumeXmark = "\uf6a9";
     public const string Bell = "\uf0f3";

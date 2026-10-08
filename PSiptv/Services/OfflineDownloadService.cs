@@ -359,6 +359,9 @@ public static class OfflineDownloadService
             }
             response.EnsureSuccessStatusCode();
             var mediaType = response.Content.Headers.ContentType?.MediaType ?? "";
+            if (PodcastFeed.IsPodcast(download.Item) &&
+                !OfflineDownloadPolicy.IsMp3Response(response.RequestMessage?.RequestUri ?? uri, mediaType))
+                throw new InvalidOperationException("Este episódio não é fornecido em MP3. O download em MP3 só está disponível para episódios nesse formato.");
             if (mediaType.Contains("mpegurl", StringComparison.OrdinalIgnoreCase) || mediaType.Equals("text/html", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException(mediaType.Contains("mpegurl", StringComparison.OrdinalIgnoreCase)
                     ? "Este VOD usa HLS segmentado e ainda não pode ser descarregado para reprodução offline."
@@ -603,6 +606,7 @@ public static class OfflineDownloadService
     {
         ".mkv" => "video/x-matroska", ".webm" => "video/webm", ".ts" => "video/mp2t",
         ".avi" => "video/x-msvideo", ".mov" => "video/quicktime", ".m4v" => "video/x-m4v",
+        ".mp3" => "audio/mpeg",
         _ => "video/mp4"
     };
 #endif

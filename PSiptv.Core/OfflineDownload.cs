@@ -26,7 +26,7 @@ public sealed record OfflineDownload(
 public static class OfflineDownloadPolicy
 {
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
-        { ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".ts" };
+        { ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".ts", ".mp3" };
 
     public static string IdFor(string accountId, string profileId, MediaItem item)
     {
@@ -37,11 +37,12 @@ public static class OfflineDownloadPolicy
             $"{accountId}\0{profileId}\0{(int)item.Kind}\0{identity}"))).ToLowerInvariant();
     }
 
-    public static bool CanDownload(MediaItem item) => item.Kind != MediaKind.Channel &&
+    public static bool CanDownload(MediaItem item) => item.Kind != MediaKind.Channel && !item.HasEpisodes &&
         Uri.TryCreate(item.Url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 
     public static string ExtensionFor(MediaItem item, string? mediaType = null)
     {
+        if (PodcastFeed.IsPodcast(item) && !item.HasEpisodes) return ".mp3";
         if (Uri.TryCreate(item.Url, UriKind.Absolute, out var uri))
         {
             var extension = Path.GetExtension(uri.AbsolutePath);
@@ -52,9 +53,16 @@ public static class OfflineDownloadPolicy
             "video/x-matroska" => ".mkv",
             "video/webm" => ".webm",
             "video/mp2t" => ".ts",
+            "audio/mpeg" or "audio/mp3" => ".mp3",
             _ => ".mp4"
         };
     }
+
+    public static bool IsMp3Response(Uri uri, string mediaType) =>
+        mediaType.Equals("audio/mpeg", StringComparison.OrdinalIgnoreCase) ||
+        mediaType.Equals("audio/mp3", StringComparison.OrdinalIgnoreCase) ||
+        (string.IsNullOrEmpty(mediaType) || mediaType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)) &&
+        uri.AbsolutePath.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase);
 
     public static string SafeFileStem(string name)
     {

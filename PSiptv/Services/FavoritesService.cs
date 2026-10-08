@@ -60,6 +60,14 @@ public static class FavoritesService
         return updated;
     }
 
+    public static async Task SetAllHeardAsync(IReadOnlyList<MediaItem> items)
+    {
+        if (AppServices.ActiveAccount is not { } account) return;
+        var scope = UserProfileService.Scope(account.Id);
+        await Store.SetHeardAsync(scope, items, true);
+        if (UserProfileService.Scope(AppServices.ActiveAccount?.Id ?? "") == scope) Changed?.Invoke();
+    }
+
     public static async Task DeleteAsync(string accountId)
     {
         foreach (var profile in UserProfileService.Profiles)

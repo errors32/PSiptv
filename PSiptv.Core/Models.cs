@@ -27,7 +27,8 @@ public sealed record PlaylistAccount
 public sealed record MediaItem(string Id, string Name, string Category, MediaKind Kind,
     string Url = "", string Logo = "", string EpgId = "", bool HasEpisodes = false, string ParentSeriesId = "",
     bool HasCatchup = false, int CatchupDays = 0, string CatchupMode = "", string CatchupSource = "", bool IsCatchup = false,
-    string HttpReferer = "", string HttpUserAgent = "", string HttpCookie = "", string SourceCommand = "");
+    string HttpReferer = "", string HttpUserAgent = "", string HttpCookie = "", string SourceCommand = "",
+    DateTimeOffset? PublishedAt = null);
 
 public sealed record CatalogCategory(string Id, string Name);
 

@@ -97,6 +97,8 @@ public sealed class AndroidAppUpdatePage : LocalizedPage
 
     private async Task RemoveTokenAsync()
     {
+        if (!await LanguageService.ConfirmAsync(this, "Remover token",
+            "Pretende remover o token usado para atualizar a aplicação?", "Remover", "Cancelar")) return;
         AndroidAppUpdateService.RemoveToken();
         availableRelease = null;
         downloadButton.IsEnabled = false;

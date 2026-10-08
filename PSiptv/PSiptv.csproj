@@ -34,7 +34,8 @@
 		<ApplicationId>com.PS.PSiptv</ApplicationId>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>1.5.5</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>1.5.6</ApplicationDisplayVersion>
+
 		<!-- Android uses this integer to decide whether an APK is an update. It must
 		     increase for every package distributed to an existing installation. -->
 		<!-- Generate a monotonically increasing Android-compatible build number
@@ -123,15 +124,10 @@
     </PropertyGroup>
     <!-- Visual Studio signs the archive during Distribute. CLI publishing
          requires a configured signing identity. -->
-    <Target Name="ValidateAndroidReleaseSigning"
-            BeforeTargets="Publish"
-            Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Release'">
-        <Error Condition="'$(AndroidSigningKeyStore)' == '' or !Exists('$(AndroidSigningKeyStore)')"
-               Text="Android Release requires a stable signing keystore. Set PSIPTV_ANDROID_KEYSTORE (or AndroidSigningKeyStore) to an existing file." />
-        <Error Condition="'$(AndroidSigningKeyAlias)' == ''"
-               Text="Android Release requires PSIPTV_ANDROID_KEY_ALIAS (or AndroidSigningKeyAlias)." />
-        <Error Condition="'$(AndroidSigningKeyPass)' == '' or '$(AndroidSigningStorePass)' == ''"
-               Text="Android Release requires PSIPTV_ANDROID_KEY_PASSWORD and PSIPTV_ANDROID_STORE_PASSWORD (or the corresponding MSBuild properties)." />
+    <Target Name="ValidateAndroidReleaseSigning" BeforeTargets="Publish" Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Release'">
+        <Error Condition="'$(AndroidSigningKeyStore)' == '' or !Exists('$(AndroidSigningKeyStore)')" Text="Android Release requires a stable signing keystore. Set PSIPTV_ANDROID_KEYSTORE (or AndroidSigningKeyStore) to an existing file." />
+        <Error Condition="'$(AndroidSigningKeyAlias)' == ''" Text="Android Release requires PSIPTV_ANDROID_KEY_ALIAS (or AndroidSigningKeyAlias)." />
+        <Error Condition="'$(AndroidSigningKeyPass)' == '' or '$(AndroidSigningStorePass)' == ''" Text="Android Release requires PSIPTV_ANDROID_KEY_PASSWORD and PSIPTV_ANDROID_STORE_PASSWORD (or the corresponding MSBuild properties)." />
     </Target>
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android' or '$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">
         <PackageReference Include="LibVLCSharp.MAUI" Version="3.10.1" />

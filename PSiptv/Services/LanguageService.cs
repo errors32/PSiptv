@@ -71,9 +71,20 @@ public static class LanguageService
     private static readonly Dictionary<string, string> translations = new()
     {
         ["Podcasts"] = "Podcasts", ["Podcasts favoritos"] = "Favorite podcasts",
+        ["Mostrar podcasts"] = "Show podcasts", ["Ordenar por data"] = "Sort by date",
+        ["Mais recentes"] = "Newest first", ["Mais antigos"] = "Oldest first", ["Ordem do feed"] = "Feed order",
+        ["Publicado em {0}"] = "Published on {0}", ["Data indisponível"] = "Date unavailable",
         ["Podcasts favoritos e ouvidos"] = "Favorite and played podcasts",
         ["Pesquisar podcasts"] = "Search podcasts", ["Por ouvir"] = "Unplayed", ["Ouvidos"] = "Played",
         ["Marcar ouvido"] = "Mark played", ["✓ Ouvido"] = "✓ Played",
+        ["Mostrar todos os episódios"] = "Show all episodes",
+        ["Ocultar episódios ouvidos"] = "Hide played episodes",
+        ["Marcar todos os episódios da lista como ouvidos"] = "Mark all episodes in the list as played",
+        ["Marcar como ouvido"] = "Mark as played", ["Marcar como por ouvir"] = "Mark as unplayed",
+        ["Descarregar episódio em MP3"] = "Download episode as MP3",
+        ["Pretende remover o token usado para atualizar a aplicação?"] = "Remove the token used to update the application?",
+        ["Este episódio não é fornecido em MP3. O download em MP3 só está disponível para episódios nesse formato."] =
+            "This episode is not provided as MP3. MP3 downloads are only available for episodes in that format.",
         ["Sem podcasts para mostrar."] = "No podcasts to display.",
         ["A carregar podcasts…"] = "Loading podcasts…",
         ["Não foi possível carregar os podcasts. Tente novamente."] = "Could not load podcasts. Please try again.",

@@ -99,18 +99,27 @@ public sealed class FavoriteStore(
         finally { gate.Release(); }
     }
 
-    public async Task SetHeardAsync(string scope, MediaItem episode, bool heard)
+    public Task SetHeardAsync(string scope, MediaItem episode, bool heard) => SetHeardAsync(scope, [episode], heard);
+
+    public async Task SetHeardAsync(string scope, IReadOnlyList<MediaItem> episodes, bool heard)
     {
-        if (!PodcastFeed.IsPodcast(episode) || episode.HasEpisodes) return;
         await gate.WaitAsync();
         try
         {
             var snapshot = await ReadSnapshotAsync(scope);
-            if (!snapshot.Entries.Any(e => e.Item.Id == episode.Id || e.Item.Id == episode.ParentSeriesId)) return;
+            var favorites = snapshot.Entries.Where(e => PodcastFeed.IsPodcast(e.Item)).Select(e => e.Item.Id).ToHashSet();
             var values = snapshot.HeardEpisodes.ToDictionary(e => e.Key, e => e.Value);
-            if (heard == values.ContainsKey(episode.Id)) return;
             var date = NextDate(snapshot.ModifiedAt);
-            if (heard) values[episode.Id] = new(date, episode.ParentSeriesId); else values.Remove(episode.Id);
+            var changed = false;
+            foreach (var episode in episodes)
+            {
+                if (!PodcastFeed.IsPodcast(episode) || episode.HasEpisodes ||
+                    !favorites.Contains(episode.Id) && !favorites.Contains(episode.ParentSeriesId) ||
+                    heard == values.ContainsKey(episode.Id)) continue;
+                if (heard) values[episode.Id] = new(date, episode.ParentSeriesId); else values.Remove(episode.Id);
+                changed = true;
+            }
+            if (!changed) return;
             await SaveAsync(scope, snapshot with { ModifiedAt = date, HeardEpisodes = values });
         }
         finally { gate.Release(); }
