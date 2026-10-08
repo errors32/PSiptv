@@ -493,6 +493,7 @@ public partial class MainPage : ContentPage
         liveAllRequested = false;
         AppServices.Activate(account);
         UpdateAccountLabel();
+        await FavoritesSyncService.OnStartupAsync();
         await CatalogOptionsService.LoadAsync(account.Id);
         contentFilter = ReadContentFilter(account.Id);
         UpdateContentFilters();

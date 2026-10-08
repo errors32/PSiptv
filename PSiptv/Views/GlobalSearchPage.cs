@@ -96,7 +96,7 @@ public sealed class GlobalSearchPage : LocalizedPage
             var guideAccount = account;
             if (account.Provider is ProviderType.M3U or ProviderType.LocalM3U)
             {
-                if (Enum.GetValues<MediaKind>().Any(kind => !catalogs.ContainsKey(kind)))
+                if (new[] { MediaKind.Channel, MediaKind.Movie, MediaKind.Series }.Any(kind => !catalogs.ContainsKey(kind)))
                 {
                     try
                     {
@@ -105,7 +105,7 @@ public sealed class GlobalSearchPage : LocalizedPage
                         var playlist = await AppServices.Client.LoadM3uAsync(account, request.Token);
                         if (account.EpgUrl.Length == 0 && playlist.EpgUrl.Length > 0)
                             guideAccount = account with { EpgUrl = playlist.EpgUrl };
-                        foreach (var kind in Enum.GetValues<MediaKind>())
+                        foreach (var kind in new[] { MediaKind.Channel, MediaKind.Movie, MediaKind.Series })
                         {
                             var items = playlist.Items.Where(item => item.Kind == kind).ToArray();
                             catalogs[kind] = items;
@@ -122,7 +122,7 @@ public sealed class GlobalSearchPage : LocalizedPage
                 // Some panels reject concurrent player_api requests. Load only
                 // missing catalogues and do so sequentially, preserving every
                 // successful result if another endpoint is slow or unavailable.
-                foreach (var kind in Enum.GetValues<MediaKind>())
+                foreach (var kind in new[] { MediaKind.Channel, MediaKind.Movie, MediaKind.Series })
                 {
                     if (catalogs.ContainsKey(kind)) continue;
                     try
@@ -232,7 +232,7 @@ public sealed class GlobalSearchPage : LocalizedPage
             .DistinctBy(CatalogPreferences.ItemKey);
         foreach (var item in allMedia.Where(item => Matches(item.Name, query) || Matches(item.Category, query)))
         {
-            var type = item.Kind switch { MediaKind.Channel => "Canal", MediaKind.Movie => "Filme", _ => item.HasEpisodes ? "Série" : "Episódio" };
+            var type = item.Kind switch { MediaKind.Channel => "Canal", MediaKind.Movie => "Filme", MediaKind.Podcast => "Podcasts", _ => item.HasEpisodes ? "Série" : "Episódio" };
             var favorite = FavoritesService.Contains(item) ? " ★" : "";
             found.Add(new(item.Name, $"{LanguageService.Text(type)}{favorite} · {item.Category}",
                 item.Kind switch { MediaKind.Channel => "▣", MediaKind.Movie => "▶", _ => "▤" }, item, null, null));
@@ -274,6 +274,8 @@ public sealed class GlobalSearchPage : LocalizedPage
                 else if (programme.Start <= now && programme.End > now) await PlaybackService.PlayAsync(this, channel);
                 else await Navigation.PushAsync(new GuidePage(account, channel));
             }
+            else if (result.Item is { } podcast && PodcastFeed.IsPodcast(podcast))
+                await PodcastService.OpenAsync(this, podcast);
             else if (result.Item is { } item && (item.Kind == MediaKind.Movie || item.HasEpisodes))
                 await Navigation.PushAsync(new MediaDetailsPage(account, item));
             else if (result.Item is { } playable) await PlaybackService.PlayAsync(this, playable);

@@ -140,6 +140,13 @@ public sealed class PlaybackView : ContentView
     }
 
     private void NotifyControlsVisibilityChanged(bool visible) => ControlsVisibilityChanged?.Invoke(visible);
+    private async void RecordPodcastCompletion()
+    {
+        if (current is not { } item || !PodcastFeed.IsPodcast(item)) return;
+        try { await FavoritesService.SetHeardAsync(item, true, accountId, session); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+    }
+
     public PlaybackView(bool compactMode = false, bool? recordHistory = null, bool requireActiveAccount = true)
     {
         this.compactMode = compactMode;
@@ -281,7 +288,7 @@ public sealed class PlaybackView : ContentView
         Content = grid;
         video.MediaOpened += async (_, _) => { PlaybackOpened(); MediaOpened?.Invoke(this, EventArgs.Empty); if (this.recordHistory && current is { } item) { try { await HistoryService.RecordAsync(accountId, session, item, Position); } catch { } } };
         video.MediaFailed += (_, _) => _ = HandlePlaybackFailureAsync("O leitor não conseguiu abrir a transmissão.");
-        video.MediaEnded += (_, _) => { SetKeepScreenOn(false); MediaEnded?.Invoke(this, EventArgs.Empty); };
+        video.MediaEnded += (_, _) => { SetKeepScreenOn(false); RecordPodcastCompletion(); MediaEnded?.Invoke(this, EventArgs.Empty); };
 #endif
         timer = Dispatcher.CreateTimer(); timer.Interval = TimeSpan.FromMilliseconds(250);
         timer.Tick += async (_, _) =>
@@ -306,7 +313,7 @@ public sealed class PlaybackView : ContentView
             }
             if (opened && !trackPreferencesApplied) ApplyTrackPreferences();
             ObserveStreamState();
-            if (player?.State == VLCState.Ended && !ended) { ended = true; SetKeepScreenOn(false); MediaEnded?.Invoke(this, EventArgs.Empty); }
+            if (player?.State == VLCState.Ended && !ended) { ended = true; SetKeepScreenOn(false); RecordPodcastCompletion(); MediaEnded?.Invoke(this, EventArgs.Empty); }
             if (player is not null && !dragging) { seek.Maximum = Math.Max(1, player.Length / 1000d); seek.Value = Math.Clamp(Position, 0, seek.Maximum); seek.IsEnabled = player.IsSeekable; }
             UpdateTimeshiftControls();
             UpdatePlaybackButton();

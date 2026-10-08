@@ -16,12 +16,13 @@ public static class BackupService
         foreach (var profile in UserProfileService.Profiles)
         foreach (var account in accounts)
         {
-            var favorites = await FavoritesService.ExportAsync(account.Id, profile.Id);
+            var snapshot = await FavoritesService.ExportSnapshotAsync(account.Id, profile.Id);
+            var favorites = snapshot.Entries;
             var history = await HistoryService.ExportAsync(account.Id, profile.Id);
             var reminders = await ReminderService.ExportAsync(account.Id, profile.Id);
             var seriesRules = await DvrService.ExportSeriesRulesAsync(account.Id, profile.Id);
             if (favorites.Count > 0 || history.Count > 0 || reminders.Count > 0 || seriesRules.Count > 0)
-                personal.Add(new(profile.Id, account.Id, favorites, history, reminders, seriesRules));
+                personal.Add(new(profile.Id, account.Id, favorites, history, reminders, seriesRules, snapshot.HeardEpisodes));
         }
 
         var catalogOptions = new Dictionary<string, string>();
@@ -70,7 +71,7 @@ public static class BackupService
             var localFavorites = await FavoritesService.ExportAsync(data.AccountId, data.ProfileId);
             var mergedFavorites = localFavorites.Concat(data.Favorites)
                 .GroupBy(entry => entry.Key).Select(group => group.Last()).ToArray();
-            await FavoritesService.ImportAsync(data.AccountId, data.ProfileId, mergedFavorites);
+            await FavoritesService.ImportAsync(data.AccountId, data.ProfileId, mergedFavorites, data.HeardEpisodes);
             var localHistory = await HistoryService.ExportAsync(data.AccountId, data.ProfileId);
             var mergedHistory = localHistory.Concat(data.History)
                 .GroupBy(entry => CatalogPreferences.ItemKey(entry.Item))
@@ -177,7 +178,8 @@ public static class BackupService
         string ProtectedGitHubToken = "");
     private sealed record ProfileBackupData(string ProfileId, string AccountId,
         IReadOnlyList<FavoriteEntry> Favorites, IReadOnlyList<WatchEntry> History,
-        IReadOnlyList<ProgrammeReminder>? Reminders, IReadOnlyList<DvrSeriesRule>? SeriesRules = null);
+        IReadOnlyList<ProgrammeReminder>? Reminders, IReadOnlyList<DvrSeriesRule>? SeriesRules = null,
+        IReadOnlyDictionary<string, PodcastHeardEntry>? HeardEpisodes = null);
     private sealed record BackupSettings(bool Pip, string StreamFormat, bool AutoPlay, int AutoPlaySeconds,
         bool AutoClearCache, bool Subtitles, bool Clock12, string UserAgent, int BufferSeconds,
         bool NetworkSpeed, string Decoder, bool OpenSl, bool OpenGl, string Language, string Theme,

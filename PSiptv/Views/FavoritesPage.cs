@@ -7,7 +7,7 @@ public sealed class FavoritesPage : LocalizedPage
 {
     private readonly CollectionView items = Ui.MediaList();
     private readonly SearchBar search = new() { Placeholder = "Pesquisar favoritos" };
-    private readonly Picker kind = new() { ItemsSource = new[] { "Todos", "Canais", "Rádios", "Filmes", "Séries e episódios" }, SelectedIndex = 0 };
+    private readonly Picker kind = new() { ItemsSource = new[] { "Todos", "Canais", "Rádios", "Filmes", "Séries e episódios", "Podcasts" }, SelectedIndex = 0 };
     private readonly Label count = Ui.Text("", 13, true);
 
     public FavoritesPage()
@@ -29,7 +29,8 @@ public sealed class FavoritesPage : LocalizedPage
             items.SelectedItem = null;
             try
             {
-                if (item.Kind == MediaKind.Movie || item.HasEpisodes) await Navigation.PushAsync(new MediaDetailsPage(account, item));
+                if (PodcastFeed.IsPodcast(item)) await PodcastService.OpenAsync(this, item);
+                else if (item.Kind == MediaKind.Movie || item.HasEpisodes) await Navigation.PushAsync(new MediaDetailsPage(account, item));
                 else await PlaybackService.PlayAsync(this, item);
             }
             catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
@@ -60,6 +61,7 @@ public sealed class FavoritesPage : LocalizedPage
                 2 => PortugueseRadioService.IsRadio(i),
                 3 => i.Kind == MediaKind.Movie,
                 4 => i.Kind == MediaKind.Series,
+                5 => PodcastFeed.IsPodcast(i),
                 _ => true
             })
             && i.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).OrderBy(i => i.Name).ToList();

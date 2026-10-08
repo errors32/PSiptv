@@ -2,6 +2,14 @@
 
 Leitor IPTV em português, desenvolvido em .NET 10 / MAUI. Não inclui listas nem conteúdos pré-carregados.
 
+## Podcasts e favoritos na rede local
+
+O botão **Podcasts**, junto ao seletor de TV/Rádios, abre a pesquisa no diretório iTunes e os episódios dos feeds RSS. Use a estrela para guardar um podcast ou um episódio no perfil ativo. Em **Configurações → Podcasts favoritos e ouvidos** pode consultar os favoritos e, dentro de cada podcast, filtrar episódios **Por ouvir** ou **Ouvidos**, ou alterar esse estado manualmente. O leitor integrado marca o episódio como ouvido quando chega ao fim; leitores externos não comunicam a conclusão à aplicação. O estado só é conservado enquanto o podcast ou o episódio estiver nos favoritos e acompanha as cópias de segurança.
+
+Na primeira abertura de uma lista desbloqueada após iniciar a aplicação, a PSiptv procura outras instâncias abertas na mesma rede local, com a mesma ligação à lista e o mesmo nome de perfil. Obtém a cópia de favoritos mais recente e substitui a local apenas se a data recebida for posterior, incluindo remoções e estados dos podcasts. Guarda exatamente a data recebida; datas iguais não originam outra atualização. A consulta tem um limite de sete segundos e uma falha de rede permite continuar com os favoritos locais. Regressar do segundo plano ou trocar de perfil durante a mesma execução não repete a consulta. Os relógios dos equipamentos devem estar acertados; redes que bloqueiam descoberta UDP ou a porta TCP 45873 impedem a sincronização. Favoritos antigos sem data mantêm-se legíveis e passam a ter uma data na próxima alteração.
+
+Referência do diretório: [iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html).
+
 ## Aviso legal e responsabilidade
 
 A PSiptv é apenas um leitor multimédia destinado a fins recreativos, de desenvolvimento e de teste. A aplicação não fornece, aloja, vende, recomenda nem valida listas IPTV, canais, conteúdos ou URLs de terceiros.

@@ -20,7 +20,8 @@ public sealed record RemoteControlState(string DeviceName, string ActiveTab, str
     int Volume, string CurrentChannelId, IReadOnlyList<RemoteChannel> Channels,
     bool IsActive = true, string ProfileName = "", string DeviceId = "",
     string LeaderDeviceId = "", long LeaderEpoch = 0, IReadOnlyList<string>? Categories = null);
-public sealed record RemoteControlResponse(bool Success, string Error, RemoteControlState? State);
+public sealed record RemoteControlResponse(bool Success, string Error, RemoteControlState? State,
+    FavoriteSnapshot? Favorites = null, string ProfileKey = "");
 
 public static class RemoteLeadership
 {

@@ -119,12 +119,12 @@ public static class CatalogUpdateService
         if (account.Provider is ProviderType.M3U or ProviderType.LocalM3U)
         {
             var playlist = await AppServices.Client.LoadM3uAsync(account, cancellationToken).ConfigureAwait(false);
-            foreach (var kind in Enum.GetValues<MediaKind>())
+            foreach (var kind in new[] { MediaKind.Channel, MediaKind.Movie, MediaKind.Series })
                 result[kind] = playlist.Items.Where(item => item.Kind == kind).ToArray();
             return result;
         }
 
-        foreach (var kind in Enum.GetValues<MediaKind>())
+        foreach (var kind in new[] { MediaKind.Channel, MediaKind.Movie, MediaKind.Series })
         {
             using var request = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             request.CancelAfter(TimeSpan.FromMinutes(3));

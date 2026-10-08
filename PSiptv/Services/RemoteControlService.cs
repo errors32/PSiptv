@@ -188,6 +188,20 @@ public static class RemoteControlService
                 if (request is null || !CryptographicOperations.FixedTimeEquals(
                         Encoding.UTF8.GetBytes(request.Token), Encoding.UTF8.GetBytes(token)))
                     response = new(false, "Ligação expirada. Procure novamente o dispositivo.", null);
+                else if (request.Command == "favorites-snapshot")
+                {
+                    response = await MainThread.InvokeOnMainThreadAsync(async () =>
+                    {
+                        var profileKey = CurrentProfileKey;
+                        var version = AppServices.SessionVersion;
+                        if (profileKey.Length == 0 || request.Value != profileKey)
+                            return new RemoteControlResponse(false, "O perfil mudou.", null);
+                        var snapshot = await FavoritesService.SnapshotAsync();
+                        return version == AppServices.SessionVersion && snapshot is not null
+                            ? new RemoteControlResponse(true, "", null, snapshot, profileKey)
+                            : new RemoteControlResponse(false, "O perfil mudou.", null);
+                    });
+                }
                 else if (request.Command == "activate")
                 {
                     ClaimActive();

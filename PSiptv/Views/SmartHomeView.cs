@@ -190,7 +190,8 @@ public sealed class SmartHomeView : ContentView
     private async Task OpenMediaAsync(PlaylistAccount account, MediaItem item)
     {
         if (AppServices.ActiveAccount?.Id != account.Id) return;
-        if (item.Kind == MediaKind.Movie || item.HasEpisodes)
+        if (PodcastFeed.IsPodcast(item)) await PodcastService.OpenAsync(FindPage(), item);
+        else if (item.Kind == MediaKind.Movie || item.HasEpisodes)
             await FindPage().Navigation.PushAsync(new MediaDetailsPage(account, item));
         else await PlaybackService.PlayAsync(FindPage(), item);
     }

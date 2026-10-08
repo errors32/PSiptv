@@ -510,6 +510,85 @@ Check((await favorites.LoadAsync(account.Id)).Count == 12, "Gravações concorre
 await favorites.DeleteAsync(account.Id);
 Check((await favorites.LoadAsync(account.Id)).Count == 0 && (await favorites.LoadAsync(secondAccount.Id)).Count == 1, "Eliminar lista limpa apenas os seus favoritos");
 var options = new CatalogPreferences();
+var podcast = new MediaItem(PodcastFeed.Id("https://example.test/feed"), "Podcast", "Portugal", MediaKind.Podcast,
+    "https://example.test/feed", HasEpisodes: true);
+var podcastXml = """
+    <rss><channel>
+      <item><title>Primeiro</title><guid>stable-1</guid><enclosure url="https://example.test/audio.mp3" type="audio/mpeg" /></item>
+      <item><title>Duplicado</title><guid>stable-1</guid><enclosure url="https://example.test/audio.mp3" /></item>
+      <item><title>Sem áudio</title></item>
+      <item><title>Inválido</title><enclosure url="file:///secret" /></item>
+    </channel></rss>
+    """;
+var podcastEpisode = PodcastFeed.Parse(podcastXml, podcast).Single();
+Check(podcastEpisode.ParentSeriesId == podcast.Id && podcastEpisode.Kind == MediaKind.Podcast,
+    "RSS ignora episódios inválidos e duplicados e associa a subscrição");
+Check(PodcastFeed.Parse(podcastXml.Replace("audio.mp3", "changed.mp3"), podcast).Single().Id == podcastEpisode.Id,
+    "GUID mantém a identidade do episódio quando muda o áudio");
+Check(FavoriteStore.ItemKey(m3uAccount, podcastEpisode) == FavoriteStore.ItemKey(m3uAccount, podcastEpisode with { Url = "https://example.test/new.mp3" }),
+    "Favoritos de podcasts usam identidade estável também em listas M3U");
+var podcastScope = ProfileStorageScope.ForAccount(account.Id, "podcast-profile");
+await favorites.SetHeardAsync(podcastScope, podcastEpisode, true);
+Check((await favorites.SnapshotAsync(podcastScope)).HeardEpisodes.Count == 0,
+    "Podcasts fora dos favoritos não guardam estado ouvido");
+await favorites.SetAsync(account, podcast, true, podcastScope);
+await favorites.SetHeardAsync(podcastScope, podcastEpisode, true);
+Check((await NewFavorites().SnapshotAsync(podcastScope)).HeardEpisodes.ContainsKey(podcastEpisode.Id) &&
+    (await favorites.SnapshotAsync(account.Id)).HeardEpisodes.Count == 0,
+    "Estado ouvido persiste e fica isolado por perfil");
+await favorites.SetAsync(account, podcast, false, podcastScope);
+Check((await favorites.SnapshotAsync(podcastScope)).HeardEpisodes.Count == 0,
+    "Remover podcast favorito elimina o estado dos episódios");
+await favorites.SetAsync(account, podcast, true, podcastScope);
+await favorites.SetAsync(account, podcastEpisode, true, podcastScope);
+await favorites.SetHeardAsync(podcastScope, podcastEpisode, true);
+await favorites.SetAsync(account, podcast, false, podcastScope);
+Check((await favorites.SnapshotAsync(podcastScope)).HeardEpisodes.ContainsKey(podcastEpisode.Id),
+    "Remover subscrição preserva estado de um episódio ainda favorito");
+var heardDate = (await favorites.SnapshotAsync(podcastScope)).ModifiedAt;
+await favorites.SetHeardAsync(podcastScope, podcastEpisode, false);
+Check((await favorites.SnapshotAsync(podcastScope)).HeardEpisodes.Count == 0 &&
+    (await favorites.SnapshotAsync(podcastScope)).ModifiedAt > heardDate,
+    "Marcar por ouvir limpa o estado e atualiza a data");
+await favorites.SetAsync(account, podcastEpisode, false, podcastScope);
+var beforeSync = await favorites.SnapshotAsync(podcastScope);
+var remoteSnapshot = new FavoriteSnapshot(beforeSync.ModifiedAt.AddMinutes(1),
+    [new("foreign-key", podcast)], new Dictionary<string, PodcastHeardEntry>());
+Check(await favorites.ImportNewerAsync(podcastScope, account, remoteSnapshot),
+    "Sincronização importa favoritos com data mais recente");
+var synced = await favorites.SnapshotAsync(podcastScope);
+Check(synced.ModifiedAt == remoteSnapshot.ModifiedAt && synced.Entries.Single().Key == FavoriteStore.ItemKey(account, podcast),
+    "Sincronização preserva a data remota e adapta chaves à conta local");
+Check(!await favorites.ImportNewerAsync(podcastScope, account, remoteSnapshot) &&
+    !await favorites.ImportNewerAsync(podcastScope, account, beforeSync),
+    "Datas iguais ou antigas não repetem a atualização");
+await favorites.SetAsync(account, podcast, false, podcastScope);
+var deletion = await favorites.SnapshotAsync(podcastScope);
+Check(deletion.Entries.Count == 0 && deletion.ModifiedAt > remoteSnapshot.ModifiedAt &&
+    !await favorites.ImportNewerAsync(podcastScope, account, remoteSnapshot),
+    "Remoções atualizam a data e uma cópia remota antiga não recupera favoritos apagados");
+var emptyRemote = deletion with { ModifiedAt = deletion.ModifiedAt.AddMinutes(1) };
+Check(await favorites.ImportNewerAsync(podcastScope, account, emptyRemote) &&
+    (await favorites.SnapshotAsync(podcastScope)).Entries.Count == 0,
+    "Sincronização aceita uma lista vazia mais recente");
+favoriteStorage["psiptv.favorites.v1.legacy"] = JsonSerializer.Serialize(new[] { new FavoriteEntry("old", favoriteChannel) });
+Check((await favorites.LoadAsync("legacy")).Single().Item == favoriteChannel,
+    "Novo formato mantém leitura dos favoritos antigos");
+var wireJson = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+var wireSnapshot = remoteSnapshot with { HeardEpisodes = new Dictionary<string, PodcastHeardEntry>
+    { [podcastEpisode.Id] = new(remoteSnapshot.ModifiedAt, podcast.Id) } };
+var wireReply = JsonSerializer.Deserialize<RemoteControlResponse>(JsonSerializer.Serialize(
+    new RemoteControlResponse(true, "", null, wireSnapshot, "same-profile"), wireJson), wireJson)!;
+Check(wireReply.ProfileKey == "same-profile" && wireReply.Favorites!.ModifiedAt == wireSnapshot.ModifiedAt &&
+    wireReply.Favorites.HeardEpisodes[podcastEpisode.Id].PodcastId == podcast.Id,
+    "Protocolo LAN transporta perfil, favoritos, data e episódios ouvidos");
+var legacyReply = JsonSerializer.Deserialize<RemoteControlResponse>("{\"success\":true,\"error\":\"\",\"state\":null}", wireJson)!;
+Check(legacyReply.Favorites is null && legacyReply.ProfileKey == "",
+    "Resposta remota antiga continua compatível sem dados de sincronização");
+await favorites.ReplaceAsync(podcastScope, wireSnapshot.Entries, wireSnapshot.HeardEpisodes);
+Check((await favorites.SnapshotAsync(podcastScope)).HeardEpisodes.ContainsKey(podcastEpisode.Id),
+    "Restaurar cópia de segurança recupera estados dos podcasts favoritos");
+
 var sample = new[] { new MediaItem("1", "Zulu", "Sports", MediaKind.Channel, "https://example.test/one"), new MediaItem("2", "Alpha", "News", MediaKind.Channel, "https://example.test/two"), new MediaItem("3", "Movie", "Drama", MediaKind.Movie, "https://example.test/movie") };
 options.Sorting[MediaKind.Channel] = CatalogSort.NameAscending;
 Check(options.Filter(sample, MediaKind.Channel, null, "")[0].Name == "Alpha", "Ordenação por nome respeita o tipo de conteúdo");

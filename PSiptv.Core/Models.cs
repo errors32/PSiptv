@@ -1,7 +1,7 @@
 namespace PSiptv.Core;
 
 public enum ProviderType { Xtream, M3U, Stalker, Jellyfin, Plex, Tvheadend, HDHomeRun, LocalM3U }
-public enum MediaKind { Channel, Movie, Series }
+public enum MediaKind { Channel, Movie, Series, Podcast }
 
 public sealed record PlaylistAccount
 {

@@ -70,6 +70,13 @@ public static class LanguageService
     }
     private static readonly Dictionary<string, string> translations = new()
     {
+        ["Podcasts"] = "Podcasts", ["Podcasts favoritos"] = "Favorite podcasts",
+        ["Podcasts favoritos e ouvidos"] = "Favorite and played podcasts",
+        ["Pesquisar podcasts"] = "Search podcasts", ["Por ouvir"] = "Unplayed", ["Ouvidos"] = "Played",
+        ["Marcar ouvido"] = "Mark played", ["✓ Ouvido"] = "✓ Played",
+        ["Sem podcasts para mostrar."] = "No podcasts to display.",
+        ["A carregar podcasts…"] = "Loading podcasts…",
+        ["Não foi possível carregar os podcasts. Tente novamente."] = "Could not load podcasts. Please try again.",
         ["Diagnóstico de fontes"] = "Source diagnostics", ["Diagnosticar fonte"] = "Diagnose source",
         ["Downloads offline"] = "Offline downloads", ["Descarregar"] = "Download", ["Ver download"] = "View download",
         ["Abrir pasta dos downloads"] = "Open downloads folder", ["Pasta dos downloads"] = "Downloads folder",

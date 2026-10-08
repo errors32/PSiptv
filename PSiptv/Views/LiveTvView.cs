@@ -317,6 +317,13 @@ public sealed class LiveTvView : ContentView
         groupHeader.Add(viewModeButton, 1);
         groupHeader.Add(multiviewButton, 2);
         groupHeader.Add(radioButton, 3);
+        var podcasts = Ui.Button("Podcasts", () => Navigation.PushAsync(new PodcastsPage(favoritesOnly: favoritesSection)));
+        podcasts.ImageSource = Ui.FontIconSource(FaIcons.Music, 19);
+        podcasts.MinimumHeightRequest = 42;
+        groupHeader.RowDefinitions.Add(new(GridLength.Auto));
+        groupHeader.RowDefinitions.Add(new(GridLength.Auto));
+        groupHeader.Add(podcasts, 0, 1);
+        Grid.SetColumnSpan(podcasts, 4);
         radioSearch.Placeholder = LanguageService.Text("Pesquisar rádios");
         radioSearch.SetDynamicResource(SearchBar.TextColorProperty, "Ink");
         radioSearch.SetDynamicResource(SearchBar.PlaceholderColorProperty, "Muted");

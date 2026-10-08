@@ -119,6 +119,7 @@ public static class HistoryService
     }
     public static async Task RecordAsync(string id, int version, MediaItem item, double position)
     {
+        if (PodcastFeed.IsPodcast(item)) return;
         await gate.WaitAsync();
         try
         {
