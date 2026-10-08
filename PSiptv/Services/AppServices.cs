@@ -186,6 +186,24 @@ public sealed class AccountStore
 }
 
 public enum ThemeMode { System, Dark, Light }
+public enum ThemePalette { Default, Snow, Graphite, Sand, Indigo }
+public enum InterfaceDesign { Current, Clean }
+
+public static class DesignService
+{
+    public static InterfaceDesign Mode => Enum.TryParse<InterfaceDesign>(Preferences.Default.Get("designMode", ""), out var mode)
+        && Enum.IsDefined(mode) ? mode : InterfaceDesign.Current;
+
+    public static bool IsClean => Mode == InterfaceDesign.Clean;
+    public static event Action? Changed;
+
+    public static void Apply(InterfaceDesign mode)
+    {
+        if (!Enum.IsDefined(mode) || Mode == mode) return;
+        Preferences.Default.Set("designMode", mode.ToString());
+        Changed?.Invoke();
+    }
+}
 
 public static class ThemeService
 {
@@ -195,17 +213,26 @@ public static class ThemeService
             ? (Preferences.Default.Get("dark", true) ? ThemeMode.Dark : ThemeMode.Light)
             : ThemeMode.System;
 
-    public static void Apply(string? accent = null, ThemeMode? mode = null)
+    public static ThemePalette Palette => Enum.TryParse<ThemePalette>(Preferences.Default.Get("themePalette", ""), out var palette)
+        && Enum.IsDefined(palette) ? palette : ThemePalette.Default;
+
+    public static void Apply(string? accent = null, ThemeMode? mode = null, ThemePalette? palette = null)
     {
         var selected = mode ?? Mode;
         Preferences.Default.Set("themeMode", selected.ToString());
+        if (palette is not null) Preferences.Default.Set("themePalette", palette.Value.ToString());
         if (accent is not null) Preferences.Default.Set("accent", accent);
         var app = Application.Current!;
-        app.UserAppTheme = selected switch
+        app.UserAppTheme = Palette switch
         {
-            ThemeMode.Dark => AppTheme.Dark,
-            ThemeMode.Light => AppTheme.Light,
-            _ => AppTheme.Unspecified
+            ThemePalette.Snow or ThemePalette.Sand => AppTheme.Light,
+            ThemePalette.Graphite or ThemePalette.Indigo => AppTheme.Dark,
+            _ => selected switch
+            {
+                ThemeMode.Dark => AppTheme.Dark,
+                ThemeMode.Light => AppTheme.Light,
+                _ => AppTheme.Unspecified
+            }
         };
         RefreshColors();
     }
@@ -213,14 +240,30 @@ public static class ThemeService
     public static void RefreshColors()
     {
         var app = Application.Current!;
-        var isDark = Mode == ThemeMode.Dark || (Mode == ThemeMode.System && app.RequestedTheme == AppTheme.Dark);
+        var isDark = Palette is ThemePalette.Graphite or ThemePalette.Indigo ||
+                     (Palette == ThemePalette.Default &&
+                      (Mode == ThemeMode.Dark || (Mode == ThemeMode.System && app.RequestedTheme == AppTheme.Dark)));
         var resources = app.Resources;
-        resources["Accent"] = Color.FromArgb(Preferences.Default.Get("accent", "#36D6B0"));
-        resources["Canvas"] = Color.FromArgb(isDark ? "#0F172C" : "#F2F5FA");
-        resources["Surface"] = Color.FromArgb(isDark ? "#172235" : "#FFFFFF");
-        resources["ProfileTile"] = Color.FromArgb(isDark ? "#30366D" : "#E2E5FA");
-        resources["Ink"] = Color.FromArgb(isDark ? "#F3F7FF" : "#142238");
-        resources["Muted"] = Color.FromArgb(isDark ? "#A9B8CD" : "#52647A");
+        var colors = Palette switch
+        {
+            ThemePalette.Snow => ("#F8FAFC", "#FFFFFF", "#EAF2FF", "#15202B", "#677586", "#E6EBF0", "#2563EB"),
+            ThemePalette.Graphite => ("#111419", "#1D232B", "#203B35", "#F3F5F7", "#AAB6C2", "#303942", "#65E0BB"),
+            ThemePalette.Sand => ("#F8F3EB", "#FFFDF9", "#F6E4D6", "#2F2822", "#776C62", "#E8DCCD", "#C77444"),
+            ThemePalette.Indigo => ("#151A31", "#202743", "#343864", "#F2F3FF", "#B3BAD8", "#364063", "#9CA3FF"),
+            _ => isDark
+                ? ("#0F172C", "#172235", "#30366D", "#F3F7FF", "#A9B8CD", "#30435A", "#36D6B0")
+                : ("#F2F5FA", "#FFFFFF", "#E2E5FA", "#142238", "#52647A", "#D9E1EC", "#36D6B0")
+        };
+        resources["Canvas"] = Color.FromArgb(colors.Item1);
+        resources["Surface"] = Color.FromArgb(colors.Item2);
+        resources["ProfileTile"] = Color.FromArgb(colors.Item3);
+        resources["Ink"] = Color.FromArgb(colors.Item4);
+        resources["Muted"] = Color.FromArgb(colors.Item5);
+        resources["Line"] = Color.FromArgb(colors.Item6);
+        var accent = Color.FromArgb(Preferences.Default.Get("accent", colors.Item7));
+        resources["Accent"] = accent;
+        resources["OnAccent"] = Color.FromArgb(0.2126 * accent.Red + 0.7152 * accent.Green +
+            0.0722 * accent.Blue < 0.58 ? "#FFFFFF" : "#071520");
     }
 }
 

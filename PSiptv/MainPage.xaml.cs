@@ -18,6 +18,9 @@ public partial class MainPage : ContentPage
     private readonly BrowserView browser = new() { IsVisible = false };
     private readonly ActivityIndicator spinner = new() { IsVisible = false };
     private readonly Dictionary<MainSection, Button> tabs = [];
+    private readonly Dictionary<MainSection, Button> cleanTabs = [];
+    private Grid? cleanMenuOverlay;
+    private Button? cleanMenuButton;
     private readonly Dictionary<ContentFilterMode, Button> contentFilterButtons = [];
     private readonly Grid contentFilters;
     private IReadOnlyList<MediaItem> catalog = [];
@@ -50,7 +53,7 @@ public partial class MainPage : ContentPage
         {
             ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(GridLength.Auto)],
+                new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Auto)],
             ColumnSpacing = 4
         };
         var brand = Ui.Text("PSiptv", 20);
@@ -65,11 +68,20 @@ public partial class MainPage : ContentPage
         identity.Add(new Image { Source = "psiptv_mark.svg", HeightRequest = 32, WidthRequest = 32 });
         identity.Add(brand, 1);
         topBar.Add(identity);
-        topBar.Add(IconButton(Ui.FontIconSource(FaIcons.Chromecast, 22, "FontAwesomeFreeBrands"), "Transmitir", () => ScreenSharingService.ChooseAsync(this, liveTv.CurrentItem, liveTv.Pause)), 1);
-        topBar.Add(IconButton(Ui.FontIconSource(FaIcons.Wifi, 20), "Comando remoto", OpenLanRemoteAsync), 2);
+        var castButton = IconButton(Ui.FontIconSource(FaIcons.Chromecast, 22, "FontAwesomeFreeBrands"), "Transmitir", () => ScreenSharingService.ChooseAsync(this, liveTv.CurrentItem, liveTv.Pause));
+        var remoteButton = IconButton(Ui.FontIconSource(FaIcons.Wifi, 20), "Comando remoto", OpenLanRemoteAsync);
+        topBar.Add(castButton, 1);
+        topBar.Add(remoteButton, 2);
         topBar.Add(IconButton("nav_search.png", "Pesquisa global", OpenGlobalSearchAsync), 3);
         topBar.Add(IconButton("nav_settings.png", "Configurações",
             () => Navigation.PushAsync(new ProfilePage(ChooseAccountAsync, SwitchUserProfileAsync))), 4);
+        var menuButton = IconButton(Ui.FontIconSource(FaIcons.List, 21), "Abrir menu", () =>
+        {
+            OpenCleanMenu();
+            return Task.CompletedTask;
+        });
+        cleanMenuButton = menuButton;
+        topBar.Add(menuButton, 5);
         var nav = new Grid { Padding = new Thickness(8, 6, 8, 8) };
         nav.SetDynamicResource(BackgroundColorProperty, "Surface");
         var tabColumn = 0;
@@ -133,6 +145,10 @@ public partial class MainPage : ContentPage
         loadingOverlay.Add(spinner);
         root.Add(loadingOverlay);
         Grid.SetRowSpan(loadingOverlay, 2);
+        var cleanMenu = BuildCleanMenu();
+        cleanMenuOverlay = cleanMenu;
+        root.Add(cleanMenu);
+        Grid.SetRowSpan(cleanMenu, 2);
         spinner.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName != nameof(ActivityIndicator.IsVisible)) return;
@@ -141,37 +157,52 @@ public partial class MainPage : ContentPage
             nav.IsEnabled = !spinner.IsVisible;
         };
         Content = root;
+        void RefreshDesign()
+        {
+            var clean = DesignService.IsClean;
+            menuButton.IsVisible = clean;
+            castButton.IsVisible = !clean;
+            remoteButton.IsVisible = !clean;
+            if (!clean) cleanMenu.IsVisible = false;
+            Ui.ApplyMediaListDesign(items);
+            liveTv.ApplyDesign();
+            UpdateTabs();
+            AdaptLayout();
+        }
         void AdaptLayout()
         {
             var fullscreen = liveTv.IsVideoOnly;
             var viewport = Ui.Viewport(this);
             var landscape = viewport.Width > viewport.Height;
             var compactLandscape = !Ui.IsTelevision && landscape && viewport.Height < 600;
-            header.IsVisible = !fullscreen && !IsBrowserTab;
+            header.IsVisible = !fullscreen && (!IsBrowserTab || DesignService.IsClean);
             filters.IsVisible = !fullscreen && !IsBrowserTab && !IsFavoritesTab && !IsHomeTab;
             contentFilters.IsVisible = !fullscreen && IsContentTab;
-            nav.IsVisible = !fullscreen;
+            nav.IsVisible = !fullscreen && (!DesignService.IsClean || !Ui.IsTelevision);
             root.SafeAreaEdges = new SafeAreaEdges(fullscreen ? SafeAreaRegions.None : SafeAreaRegions.Container);
-            accountLabel.IsVisible = !compactLandscape && !Ui.IsTelevision;
+            accountLabel.IsVisible = !DesignService.IsClean && !compactLandscape && !Ui.IsTelevision;
             status.IsVisible = !compactLandscape;
-            grid.Padding = fullscreen ? 0 : IsBrowserTab ? new Thickness(6) : Ui.IsTelevision ? new Thickness(28, 12) : compactLandscape ? new Thickness(12, 4) : new Thickness(16, 12);
-            nav.Padding = Ui.IsTelevision ? new Thickness(28, 4, 28, 8) : new Thickness(8, 6, 8, 8);
-            grid.RowSpacing = fullscreen ? 0 : 8;
-            Ui.UpdateColumns(items, viewport.Width - grid.Padding.HorizontalThickness);
+            grid.Padding = fullscreen ? 0 : IsBrowserTab ? new Thickness(6) : Ui.IsTelevision ? new Thickness(28, 12) : compactLandscape ? new Thickness(12, 4) : DesignService.IsClean ? new Thickness(14, 10) : new Thickness(16, 12);
+            nav.Padding = Ui.IsTelevision ? new Thickness(28, 4, 28, 8) : DesignService.IsClean ? new Thickness(6, 3, 6, 5) : new Thickness(8, 6, 8, 8);
+            grid.RowSpacing = fullscreen ? 0 : DesignService.IsClean ? 5 : 8;
+            Ui.UpdateColumns(items, viewport.Width - grid.Padding.HorizontalThickness,
+                DesignService.IsClean ? 170 : 320, DesignService.IsClean ? 6 : 4);
             foreach (var button in tabs.Values)
             {
-                button.HeightRequest = Ui.IsTelevision ? 50 : compactLandscape ? 44 : 68;
-                button.Padding = new Thickness(4, Ui.IsTelevision || compactLandscape ? 2 : 8);
+                button.HeightRequest = Ui.IsTelevision ? 50 : compactLandscape ? 44 : DesignService.IsClean ? 54 : 68;
+                button.Padding = new Thickness(4, Ui.IsTelevision || compactLandscape || DesignService.IsClean ? 2 : 8);
                 button.ContentLayout = new Button.ButtonContentLayout(
                     compactLandscape || Ui.IsTelevision ? Button.ButtonContentLayout.ImagePosition.Left : Button.ButtonContentLayout.ImagePosition.Top, 4);
             }
         }
         adaptLayout = AdaptLayout;
+        RefreshDesign();
+        DesignService.Changed += () => Dispatcher.Dispatch(RefreshDesign);
         SizeChanged += (_, _) => AdaptLayout();
         Loaded += (_, _) =>
         {
             AdaptLayout();
-            if (Ui.IsTelevision) Dispatcher.Dispatch(() => tabs[section].Focus());
+            if (Ui.IsTelevision) Dispatcher.Dispatch(() => (DesignService.IsClean ? menuButton : tabs[section]).Focus());
         };
         liveTv.FullscreenChanged += _ => AdaptLayout();
         items.SelectionChanged += OnSelected;
@@ -251,6 +282,112 @@ public partial class MainPage : ContentPage
             button.Opacity = selected ? 1 : 0.55;
             SemanticProperties.SetDescription(button, button.Text + (selected ? ", " + LanguageService.Text("selecionado") : ""));
         }
+        foreach (var (target, button) in cleanTabs)
+        {
+            var selected = target == section;
+            button.SetDynamicResource(Button.BackgroundColorProperty, selected ? "ProfileTile" : "Surface");
+            button.SetDynamicResource(Button.TextColorProperty, selected ? "Accent" : "Ink");
+            button.FontAttributes = selected ? FontAttributes.Bold : FontAttributes.None;
+        }
+    }
+
+    private Grid BuildCleanMenu()
+    {
+        var overlay = new Grid { IsVisible = false, ZIndex = 50 };
+        var backdrop = new BoxView { BackgroundColor = Color.FromArgb("#AA000000") };
+        backdrop.GestureRecognizers.Add(new TapGestureRecognizer
+        {
+            Command = new Command(CloseCleanMenu)
+        });
+        overlay.Add(backdrop);
+        var entries = new VerticalStackLayout { Spacing = 7, Padding = new Thickness(16, 8, 16, 24) };
+        void AddSection(string title, MainSection target)
+        {
+            var button = Ui.Button(title, async () =>
+            {
+                CloseCleanMenu();
+                if (section != target || guide) await SwitchAsync(target, false);
+                if (target == MainSection.LiveTv) await liveTv.ShowTelevisionAsync();
+            });
+            button.HorizontalOptions = LayoutOptions.Fill;
+            button.MinimumHeightRequest = 46;
+            cleanTabs[target] = button;
+            entries.Add(button);
+        }
+        void AddAction(string title, Func<Task> action)
+        {
+            var button = Ui.Button(title, async () =>
+            {
+                CloseCleanMenu();
+                await action();
+            });
+            button.HorizontalOptions = LayoutOptions.Fill;
+            button.MinimumHeightRequest = 46;
+            entries.Add(button);
+        }
+        entries.Add(Ui.Text("NAVEGAÇÃO", 12, true));
+        if (!Ui.IsTelevision) AddSection("Início", MainSection.Home);
+        AddSection("TV ao Vivo", MainSection.LiveTv);
+        AddAction("Rádios", async () =>
+        {
+            if (!IsLiveTvTab || guide) await SwitchAsync(MainSection.LiveTv, false);
+            await liveTv.ShowRadioAsync();
+        });
+        AddSection("Filmes e Séries", MainSection.MoviesAndSeries);
+        AddSection("Favoritos", MainSection.Favorites);
+        AddSection("Browser", MainSection.Browser);
+        entries.Add(Ui.Text("FERRAMENTAS", 12, true));
+        AddAction("Pesquisa global", OpenGlobalSearchAsync);
+        AddAction("Guia TV", async () =>
+        {
+            if (AppServices.ActiveAccount is { } account && liveTv.CurrentItem is { } channel)
+                await Navigation.PushAsync(new GuidePage(account, channel));
+            else await SwitchAsync(MainSection.LiveTv, true);
+        });
+        AddAction("Multiview", async () =>
+        {
+            if (!IsLiveTvTab || guide) await SwitchAsync(MainSection.LiveTv, false);
+            await liveTv.ShowTelevisionAsync();
+            await liveTv.OpenMultiviewFromMenuAsync();
+        });
+        AddAction("Gravações DVR", () => Navigation.PushAsync(new RecordingsPage()));
+        entries.Add(Ui.Text("CONTA", 12, true));
+        AddAction("Transmitir", () => ScreenSharingService.ChooseAsync(this, liveTv.CurrentItem, liveTv.Pause));
+        AddAction("Comando remoto", OpenLanRemoteAsync);
+        AddAction("Perfil e configurações", () => Navigation.PushAsync(new ProfilePage(ChooseAccountAsync, SwitchUserProfileAsync)));
+        var heading = new Grid { Padding = 16, ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto)] };
+        var title = Ui.Text("PSiptv", 20);
+        title.FontAttributes = FontAttributes.Bold;
+        heading.Add(title);
+        heading.Add(Ui.Button("✕", () => { CloseCleanMenu(); return Task.CompletedTask; }), 1);
+        var drawer = new Grid
+        {
+            WidthRequest = Ui.IsTelevision ? 380 : 320,
+            HorizontalOptions = LayoutOptions.Start,
+            RowDefinitions = [new(GridLength.Auto), new(GridLength.Star)]
+        };
+        drawer.SetDynamicResource(BackgroundColorProperty, "Surface");
+        drawer.Add(heading);
+        drawer.Add(new ScrollView { Content = entries }, 0, 1);
+        overlay.Add(drawer);
+        return overlay;
+    }
+
+    private void OpenCleanMenu()
+    {
+        if (cleanMenuOverlay is not { } menu) return;
+        UpdateTabs();
+        menu.IsVisible = true;
+        if (Ui.IsTelevision && cleanTabs.TryGetValue(section, out var selected))
+            Dispatcher.Dispatch(() => selected.Focus());
+    }
+
+    private void CloseCleanMenu()
+    {
+        if (cleanMenuOverlay is null) return;
+        cleanMenuOverlay.IsVisible = false;
+        if (Ui.IsTelevision && cleanMenuButton is not null)
+            Dispatcher.Dispatch(() => cleanMenuButton.Focus());
     }
 
     private async Task ChooseAccountAsync()
@@ -1113,6 +1250,11 @@ public partial class MainPage : ContentPage
 
     protected override bool OnBackButtonPressed()
     {
+        if (cleanMenuOverlay?.IsVisible == true)
+        {
+            CloseCleanMenu();
+            return true;
+        }
         if (!liveTv.IsFullscreen) return base.OnBackButtonPressed();
         liveTv.SetFullscreen(false);
         return true;
