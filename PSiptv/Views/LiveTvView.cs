@@ -656,8 +656,13 @@ public sealed class LiveTvView : ContentView
 
     public Task PlayRemoteAsync(MediaItem item) => PlayAsync(item);
 
-    public void Stop()
+    public void Stop(bool preserveAudio = false)
     {
+        if (preserveAudio && player.RetainAcrossNavigation)
+        {
+            SetFullscreen(false);
+            return;
+        }
         player.Stop();
         CurrentItem = null;
 

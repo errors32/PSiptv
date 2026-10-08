@@ -12,6 +12,26 @@ namespace PSiptv.Views;
 // Both the live preview and the full player use the same playback preferences.
 public sealed class PlaybackView : ContentView
 {
+    public bool RetainAcrossNavigation { get; internal set; }
+    public event Action? PlaybackStopping;
+    public bool CanSeek =>
+#if ANDROID || WINDOWS
+        player?.IsSeekable == true;
+#else
+        Duration > 0;
+#endif
+    public Task TogglePlayPauseAsync() =>
+#if ANDROID || WINDOWS
+        TogglePlaybackAsync();
+#else
+        ToggleAudioAsync();
+    private Task ToggleAudioAsync()
+    {
+        if (video.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Playing) video.Pause();
+        else video.Play();
+        return Task.CompletedTask;
+    }
+#endif
     public Action? ToggleFullscreen { get; set; }
     public event EventHandler? MediaOpened;
     public event EventHandler? MediaFailed;
@@ -83,6 +103,7 @@ public sealed class PlaybackView : ContentView
     private bool dragging;
     private bool opened, ended, failed;
     private bool trackPreferencesApplied;
+    private int navigationVideoTrack = -1;
     private long bufferingSince;
     private VLCState? observedState;
     private int timeshiftOffsetSeconds;
@@ -95,7 +116,7 @@ public sealed class PlaybackView : ContentView
     private Aspect? aspectBeforeFullscreen;
     public double Position => video.Position.TotalSeconds;
     public double Duration => video.Duration.TotalSeconds;
-    public bool IsPlaying => current is not null;
+    public bool IsPlaying => video.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Playing;
 #endif
     public bool AreControlsVisible =>
 #if ANDROID || WINDOWS
@@ -353,12 +374,37 @@ public sealed class PlaybackView : ContentView
                 recoveryPosition = Math.Max(recoveryPosition, Position);
         };
         AppServices.PlaybackSuspended += Stop;
+        Loaded += (_, _) =>
+        {
+            AppServices.PlaybackSuspended -= Stop;
+            AppServices.PlaybackSuspended += Stop;
+            if (RetainAcrossNavigation && current is not null)
+            {
+                PictureInPictureService.Current = this;
+                SetKeepScreenOn(true);
+#if ANDROID || WINDOWS
+                if (navigationVideoTrack >= 0) player?.SetVideoTrack(navigationVideoTrack);
+                navigationVideoTrack = -1;
+#endif
+            }
+        };
         Unloaded += (_, _) =>
         {
             // Android can temporarily unload the MAUI view while moving the
             // activity into picture-in-picture. Releasing VLC here leaves the
             // floating window open with a stopped/blank video.
             if (PictureInPictureService.IsActive) return;
+            if (RetainAcrossNavigation)
+            {
+                SetKeepScreenOn(false);
+                if (PictureInPictureService.Current == this) PictureInPictureService.Current = null;
+#if ANDROID || WINDOWS
+                // Video can lose its native surface during navigation; audio stays on the same engine.
+                navigationVideoTrack = player?.VideoTrack ?? -1;
+                if (navigationVideoTrack >= 0) player?.SetVideoTrack(-1);
+#endif
+                return;
+            }
             AppServices.PlaybackSuspended -= Stop;
             Stop();
         };
@@ -366,6 +412,9 @@ public sealed class PlaybackView : ContentView
 
     public async Task PlayAsync(MediaItem item, double resume = 0)
     {
+        if (requireActiveAccount && AppServices.ActiveAccount is null) return;
+        if (AudioPlaybackService.IsAudio(item)) await AudioPlaybackService.ActivateAsync(this, item);
+        else await AudioPlaybackService.StopAsync();
         await SavePodcastProgressAsync();
         // Starting playback locally is also an explicit choice of receiver.
         // Peers learn the new leader on their next LAN heartbeat and stop their player.
@@ -377,7 +426,12 @@ public sealed class PlaybackView : ContentView
         lastRequested = item;
         podcastArtwork.BindingContext = item;
         podcastCover.IsVisible = PodcastFeed.IsPodcast(item) && !podcastVideoMode;
-        await StartPlaybackAsync(item, resume);
+        try { await StartPlaybackAsync(item, resume); }
+        catch
+        {
+            await StopCoreAsync();
+            throw;
+        }
     }
 
     private void ShowPodcastControls()
@@ -396,7 +450,7 @@ public sealed class PlaybackView : ContentView
 
     public async Task SeekByAsync(int seconds)
     {
-        var target = Math.Clamp(Position + seconds, 0, Duration > 0 ? Duration : double.MaxValue);
+        var target = AudioPlaybackPolicy.SeekTarget(Position, Duration, seconds);
 #if ANDROID || WINDOWS
         if (player?.IsSeekable == true) player.Time = (long)(target * 1000);
         ShowControlsTemporarily();
@@ -650,6 +704,9 @@ public sealed class PlaybackView : ContentView
 
     private async Task StopCoreAsync()
     {
+        AudioPlaybackService.Detach(this);
+        PlaybackStopping?.Invoke();
+        if (!IsLoaded) AppServices.PlaybackSuspended -= Stop;
         await SavePodcastProgressAsync();
         CancelReconnect();
         reconnectAttempt = 0;

@@ -141,6 +141,16 @@ public static class Ui
 
     public static void Page(ContentPage page, string title)
     {
+        page.ControlTemplate = new ControlTemplate(() =>
+        {
+            var layout = new Grid
+            {
+                RowDefinitions = new RowDefinitionCollection { new(GridLength.Star), new(GridLength.Auto) }
+            };
+            layout.Add(new ContentPresenter(), 0, 0);
+            layout.Add(new AudioMiniPlayerView(), 0, 1);
+            return layout;
+        });
         page.Title = LanguageService.Text(title);
         page.Loaded += (_, _) =>
         {

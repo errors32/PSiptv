@@ -43,6 +43,7 @@ public sealed class PlayerPage : LocalizedPage
 #endif
         player = new PlaybackView(recordHistory: !transient, requireActiveAccount: !transient);
         current = item; queue = episodes ?? []; this.resume = resume;
+        player.PlaybackStopping += () => { countdown?.Cancel(); sleepTimer?.Cancel(); };
         liveChannel = !transient && item.Kind == MediaKind.Channel && !item.IsCatchup;
         Ui.Page(this, item.Name);
         player.MediaOpened += (_, _) => { message.Text = ""; message.IsVisible = false; };
@@ -551,6 +552,7 @@ public sealed class PlayerPage : LocalizedPage
             for (var seconds = AppOptions.AutoPlaySeconds; seconds > 0; seconds--)
             { nextMessage.Text = LanguageService.Format("Próximo episódio em {0} s · {1}", seconds, queue[index + 1].Name); await Task.Delay(1000, countdown.Token); }
             countdown.Token.ThrowIfCancellationRequested();
+            if (AudioPlaybackService.IsAudio(current) && AudioPlaybackService.Player != player) return;
             if (AppServices.ActiveAccount is null) return;
             // All episodes belong to the series authorized before opening this page.
             current = queue[index + 1]; Title = current.Name; mediaTitle.Text = current.Name; favorite.BindingContext = current; nextMessage.Text = "";
@@ -608,7 +610,12 @@ public sealed class PlayerPage : LocalizedPage
     }
     protected override void OnDisappearing()
     {
-        if (!PictureInPictureService.IsActive) { Stop(); ScreenOrientationService.SetFullscreen(false); }
+        if (!PictureInPictureService.IsActive)
+        {
+            if (!player.RetainAcrossNavigation) Stop();
+            SetFullscreen(false);
+            ScreenOrientationService.SetFullscreen(false);
+        }
         base.OnDisappearing();
     }
 

@@ -5,6 +5,18 @@ using System.Text.Json;
 using PSiptv.Core;
 
 var passed = 0;
+Check(AudioPlaybackPolicy.PersistsAcrossNavigation(new MediaItem("radio-browser:station", "Radio", "", MediaKind.Channel)),
+    "Rádio mantém a sessão ao navegar");
+Check(AudioPlaybackPolicy.PersistsAcrossNavigation(new MediaItem("podcast:episode", "Podcast", "", MediaKind.Movie, IsCatchup: true)),
+    "Episódio de podcast offline mantém a sessão ao navegar");
+Check(!AudioPlaybackPolicy.PersistsAcrossNavigation(new MediaItem("podcast:feed", "Feed", "", MediaKind.Series, HasEpisodes: true))
+    && !AudioPlaybackPolicy.PersistsAcrossNavigation(new MediaItem("tv", "TV", "", MediaKind.Channel))
+    && !AudioPlaybackPolicy.PersistsAcrossNavigation(new MediaItem("film", "Film", "", MediaKind.Movie)),
+    "Vídeo e subscrições sem episódio não criam sessão de áudio persistente");
+Check(AudioPlaybackPolicy.SeekTarget(8, 100, -15) == 0 && AudioPlaybackPolicy.SeekTarget(90, 100, 30) == 100,
+    "Saltos do leitor respeitam o início e o fim do episódio");
+Check(AudioPlaybackPolicy.SeekTarget(40, 100, -15) == 25 && AudioPlaybackPolicy.SeekTarget(40, 100, 30) == 70,
+    "Comandos recuam 15 segundos e avançam 30 segundos");
 void Check(bool condition, string label)
 {
     if (!condition) throw new Exception($"FAIL: {label}");

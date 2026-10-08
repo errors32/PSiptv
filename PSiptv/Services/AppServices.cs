@@ -15,6 +15,7 @@ public static class AppServices
     public static void SuspendPlayback() => PlaybackSuspended?.Invoke();
     public static void Activate(PlaylistAccount account)
     {
+        SuspendPlayback();
         SessionVersion++;
         ActiveAccount = account;
         Preferences.Default.Set("lastAccountId", account.Id);

@@ -537,7 +537,7 @@ public partial class MainPage : ContentPage
     }
     private async Task SwitchAsync(MainSection selected, bool showGuide)
     {
-        liveTv.Stop();
+        liveTv.Stop(preserveAudio: true);
         section = selected; guide = showGuide;
         Preferences.Default.Set("mainSection", section.ToString());
         home.IsVisible = IsHomeTab;
@@ -607,7 +607,7 @@ public partial class MainPage : ContentPage
     private async Task LoadAsync()
     {
         CancelLoading();
-        liveTv.Stop();
+        liveTv.Stop(preserveAudio: true);
         if (IsHomeTab)
         {
             await LoadHomeAsync(ensureChannels: true);
@@ -1289,7 +1289,7 @@ public partial class MainPage : ContentPage
 
     protected override void OnDisappearing()
     {
-        if (!PictureInPictureService.IsActive) liveTv.Stop();
+        if (!PictureInPictureService.IsActive) liveTv.Stop(preserveAudio: true);
         base.OnDisappearing();
     }
 
