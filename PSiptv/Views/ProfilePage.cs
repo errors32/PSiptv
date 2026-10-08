@@ -70,7 +70,7 @@ public sealed class ProfilePage : LocalizedPage
             SettingsTile(SettingsSection.Player, "Configurações do Player", FaIcons.CirclePlay),
             SettingsTile(SettingsSection.Vpn, "Ligação VPN", FaIcons.Shield),
             SettingsTile(SettingsSection.About, "Sobre", FaIcons.CircleInfo),
-            SettingsTile(SettingsSection.Theme, "Tema", FaIcons.Palette),
+            SettingsTile(SettingsSection.Theme, "Aparência", FaIcons.Palette),
             SettingsTile(SettingsSection.Lists, "As Suas Listas", FaIcons.List)
         ];
         foreach (var action in actions) tiles.Add(action);

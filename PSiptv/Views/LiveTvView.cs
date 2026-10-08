@@ -30,6 +30,8 @@ public sealed class LiveTvView : ContentView
         HorizontalItemSpacing = 10, VerticalItemSpacing = 10
     };
     private readonly CollectionView channels;
+    private readonly DataTemplate currentCardsTemplate;
+    private readonly DataTemplate cleanCardsTemplate;
     private readonly CollectionView fullscreenChannels;
     private IReadOnlyList<MediaItem> displayedChannels = [];
     private bool refreshChannelsAfterLayout;
@@ -109,6 +111,43 @@ public sealed class LiveTvView : ContentView
                 return card;
             })
         };
+        currentCardsTemplate = channels.ItemTemplate;
+        cleanCardsTemplate = new DataTemplate(() =>
+        {
+            var logo = new LogoImage { WidthRequest = 52, HeightRequest = 46, Aspect = Aspect.AspectFit };
+            var radioIcon = Ui.FontIcon(FaIcons.Music, 24);
+            radioIcon.IsVisible = false;
+            logo.BindingContextChanged += (_, _) =>
+            {
+                var showIcon = logo.BindingContext is MediaItem item &&
+                    PortugueseRadioService.IsRadio(item) && item.Logo.Length == 0;
+                radioIcon.IsVisible = showIcon;
+                logo.IsVisible = !showIcon;
+            };
+            var title = Ui.Text("", 14);
+            title.FontAttributes = FontAttributes.Bold;
+            title.MaxLines = 1;
+            title.LineBreakMode = LineBreakMode.TailTruncation;
+            title.SetBinding(Label.TextProperty, nameof(MediaItem.Name));
+            var subtitle = Ui.Text("", 11, true);
+            subtitle.MaxLines = 1;
+            subtitle.SetBinding(Label.TextProperty, nameof(MediaItem.Category));
+            var artwork = new Grid { WidthRequest = 52, HeightRequest = 46 };
+            artwork.Add(radioIcon);
+            artwork.Add(logo);
+            var row = new Grid
+            {
+                ColumnDefinitions = [new(new GridLength(52)), new(GridLength.Star), new(new GridLength(Ui.IsTelevision ? 0 : 44))],
+                ColumnSpacing = 10
+            };
+            row.Add(artwork);
+            row.Add(Ui.Stack(title, subtitle), 1);
+            if (!Ui.IsTelevision) row.Add(new FavoriteButton { WidthRequest = 44 }, 2);
+            var card = Ui.FocusableCard(row, value => channels.SelectedItem = value);
+            card.Padding = new Thickness(9, 6);
+            card.MinimumHeightRequest = 62;
+            return card;
+        });
         channels.SelectionChanged += async (_, e) =>
         {
             if (e.CurrentSelection.FirstOrDefault() is not MediaItem item) return;
@@ -299,6 +338,7 @@ public sealed class LiveTvView : ContentView
         layout.Add(video);
         layout.Add(channelPanel);
         Content = layout;
+        ApplyDesign();
         player.ToggleFullscreen = () => SetFullscreen(!IsFullscreen);
         player.ControlsVisibilityChanged += UpdatePlaybackControlsVisibility;
         SizeChanged += (_, _) => Arrange();
@@ -397,6 +437,25 @@ public sealed class LiveTvView : ContentView
         guideGrid.SetActive(!radioMode && guideMode);
         SetChannels(sectionChannels, sectionGroup, favoritesSection);
         return Task.CompletedTask;
+    }
+
+    public Task ShowRadioAsync() => radioMode ? Task.CompletedTask : ToggleRadioModeAsync();
+    public Task ShowTelevisionAsync() => radioMode ? ToggleRadioModeAsync() : Task.CompletedTask;
+    public Task OpenMultiviewFromMenuAsync() => OpenMultiviewAsync();
+
+    public void ApplyDesign()
+    {
+        var clean = DesignService.IsClean;
+        channels.ItemTemplate = clean ? cleanCardsTemplate : currentCardsTemplate;
+        layout.RowSpacing = clean ? 6 : 10;
+        channelPanel.RowSpacing = clean ? 5 : Ui.IsTelevision ? 5 : 10;
+        channelMenu.HeightRequest = clean ? -1 : 220;
+        channelMenu.WidthRequest = clean ? Ui.IsTelevision ? 380 : 320 : -1;
+        channelMenu.VerticalOptions = clean ? LayoutOptions.Fill : LayoutOptions.Start;
+        channelMenu.HorizontalOptions = clean ? LayoutOptions.Start : LayoutOptions.Fill;
+        fullscreenChannels.ItemsLayout = new LinearItemsLayout(
+            clean ? ItemsLayoutOrientation.Vertical : ItemsLayoutOrientation.Horizontal) { ItemSpacing = 8 };
+        Arrange();
     }
 
     private void UpdateRadioButton()
@@ -616,7 +675,9 @@ public sealed class LiveTvView : ContentView
             Grid.SetColumn(channelPanel, 0);
         }
         var available = landscape ? viewport.Width / 2.2 : viewport.Width;
-        cardsLayout.Span = Math.Clamp((int)(available / 155), 2, 5);
+        cardsLayout.Span = DesignService.IsClean
+            ? Math.Clamp((int)(available / (Ui.IsTelevision ? 230 : 320)), 1, 4)
+            : Math.Clamp((int)(available / 155), 2, 5);
     }
 }
 

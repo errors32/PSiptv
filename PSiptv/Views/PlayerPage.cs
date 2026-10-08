@@ -28,6 +28,8 @@ public sealed class PlayerPage : LocalizedPage
     private Action? adaptLayout;
     private readonly double resume;
     private readonly bool liveChannel;
+    private readonly Grid? cleanActionsOverlay;
+    private Button? cleanFirstAction;
     private bool changingChannelFromRemote;
 #if ANDROID
     private readonly Func<Android.Views.Keycode, bool> fullscreenKeyHandler;
@@ -182,6 +184,12 @@ public sealed class PlayerPage : LocalizedPage
             return Task.CompletedTask;
         });
         changeChannel.IsVisible = liveChannel;
+        var fullscreenOptions = IconButton(FaIcons.List, "Opções de reprodução", () =>
+        {
+            OpenCleanActions();
+            return Task.CompletedTask;
+        });
+        fullscreenOptions.IsVisible = DesignService.IsClean && !DeviceProfile.IsAutomotive;
         fullscreenToolbar = new Grid
         {
             IsVisible = false,
@@ -189,11 +197,12 @@ public sealed class PlayerPage : LocalizedPage
             ColumnSpacing = 8,
             HorizontalOptions = LayoutOptions.End,
             VerticalOptions = LayoutOptions.Start,
-            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)]
+            ColumnDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)]
         };
         fullscreenToolbar.Add(fullscreenFocusTarget);
         fullscreenToolbar.Add(castFullscreen, 1);
         fullscreenToolbar.Add(changeChannel, 2);
+        fullscreenToolbar.Add(fullscreenOptions, 3);
 
         View footer;
         if (DeviceProfile.IsAutomotive)
@@ -203,33 +212,80 @@ public sealed class PlayerPage : LocalizedPage
         }
         else
         {
-            var actions = new HorizontalStackLayout
+            var castButton = IconButton(FaIcons.Chromecast, "Transmitir", () => ScreenSharingService.ChooseAsync(this, current, player.Pause, queue, player.Position), "FontAwesomeFreeBrands");
+            var subtitleButton = IconButton(FaIcons.ClosedCaptioning, "Legendas externas", () => player.SelectExternalSubtitlesAsync(this));
+            var externalButton = IconButton(FaIcons.ArrowUpRightFromSquare, "Abrir com leitor externo", async () =>
             {
-                Spacing = 8,
-                HorizontalOptions = LayoutOptions.Center,
-                Children =
+                if (AppServices.ActiveAccount is null) return;
+                await player.StopForExternalPlaybackAsync();
+                await PlaybackService.OpenExternalAsync(current);
+            });
+            var actionButtons = new[] { fullscreenButton, castButton, subtitleButton, recordButton, externalButton, retryButton };
+            if (DesignService.IsClean)
+            {
+                var showOptions = Ui.Button("Opções de reprodução  ⋯", () =>
                 {
-                    fullscreenButton,
-                    IconButton(FaIcons.Chromecast, "Transmitir", () => ScreenSharingService.ChooseAsync(this, current, player.Pause, queue, player.Position), "FontAwesomeFreeBrands"),
-                    IconButton(FaIcons.ClosedCaptioning, "Legendas externas", () => player.SelectExternalSubtitlesAsync(this)),
-                    recordButton,
-                    IconButton(FaIcons.ArrowUpRightFromSquare, "Abrir com leitor externo", async () =>
-                    {
-                        if (AppServices.ActiveAccount is null) return;
-                        await player.StopForExternalPlaybackAsync();
-                        await PlaybackService.OpenExternalAsync(current);
-                    }),
-                    retryButton
+                    OpenCleanActions();
+                    return Task.CompletedTask;
+                });
+                showOptions.HorizontalOptions = LayoutOptions.Fill;
+                footer = Ui.Stack(message, nextMessage, cancelNext, showOptions);
+                cleanActionsOverlay = new Grid { IsVisible = false, ZIndex = 50 };
+                var backdrop = new BoxView { BackgroundColor = Color.FromArgb("#AA000000") };
+                backdrop.GestureRecognizers.Add(new TapGestureRecognizer
+                {
+                    Command = new Command(() => cleanActionsOverlay.IsVisible = false)
+                });
+                cleanActionsOverlay.Add(backdrop);
+                var actionGrid = new Grid { ColumnSpacing = 8, RowSpacing = 8 };
+                for (var column = 0; column < 3; column++)
+                    actionGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+                var allActions = new List<(Button Button, string Title)>
+                {
+                    (fullscreenButton, "Ecrã inteiro"), (castButton, "Transmitir"),
+                    (subtitleButton, "Legendas"), (recordButton, "Gravar"),
+                    (externalButton, "Leitor externo"), (retryButton, "Repetir")
+                };
+                if (!transient && !item.IsCatchup)
+                    allActions.Add((Ui.Button("☆ Favorito", () => FavoritesService.ToggleAsync(current)), "Favorito"));
+                cleanFirstAction = allActions[0].Button;
+                for (var row = 0; row < (allActions.Count + 2) / 3; row++)
+                    actionGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                for (var index = 0; index < allActions.Count; index++)
+                {
+                    var (button, label) = allActions[index];
+                    button.Text = label;
+                    button.WidthRequest = -1;
+                    button.MinimumHeightRequest = 76;
+                    button.FontSize = 12;
+                    button.ContentLayout = new Button.ButtonContentLayout(Button.ButtonContentLayout.ImagePosition.Top, 4);
+                    button.Clicked += (_, _) => cleanActionsOverlay.IsVisible = false;
+                    actionGrid.Add(button, index % 3, index / 3);
                 }
-            };
-            var actionScroll = new ScrollView
+                var closeOptions = Ui.Button("Fechar", () =>
+                {
+                    cleanActionsOverlay.IsVisible = false;
+                    return Task.CompletedTask;
+                });
+                var panel = Ui.Stack(Ui.Text("Opções de reprodução", 20), actionGrid, closeOptions);
+                panel.Padding = 16;
+                panel.VerticalOptions = LayoutOptions.End;
+                panel.SetDynamicResource(BackgroundColorProperty, "Surface");
+                cleanActionsOverlay.Add(panel);
+            }
+            else
             {
-                Orientation = ScrollOrientation.Horizontal,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
-                HorizontalOptions = LayoutOptions.Fill,
-                Content = actions
-            };
-            footer = Ui.Stack(message, nextMessage, cancelNext, actionScroll);
+                var actions = new HorizontalStackLayout { Spacing = 8, HorizontalOptions = LayoutOptions.Center };
+                foreach (var button in actionButtons) actions.Add(button);
+                var actionScroll = new ScrollView
+                {
+                    Orientation = ScrollOrientation.Horizontal,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+                    HorizontalOptions = LayoutOptions.Fill,
+                    Content = actions
+                };
+                footer = Ui.Stack(message, nextMessage, cancelNext, actionScroll);
+            }
         }
         var videoHost = new Grid
         {
@@ -251,6 +307,11 @@ public sealed class PlayerPage : LocalizedPage
         grid.Add(videoHost, 0, 1);
         grid.Add(footer, 0, 2);
         grid.Add(guideSection, 0, 3);
+        if (cleanActionsOverlay is not null)
+        {
+            grid.Add(cleanActionsOverlay);
+            Grid.SetRowSpan(cleanActionsOverlay, 4);
+        }
         Content = grid;
         void Adapt()
         {
@@ -271,6 +332,7 @@ public sealed class PlayerPage : LocalizedPage
                 ? SafeAreaRegions.None : SafeAreaRegions.Container);
             NavigationPage.SetHasNavigationBar(this, !pip && !fullscreen);
             if (!fullscreen || pip) channelMenu.IsVisible = false;
+            if (pip) cleanActionsOverlay?.IsVisible = false;
             UpdateFullscreenOverlay();
             grid.InvalidateMeasure();
         }
@@ -451,6 +513,7 @@ public sealed class PlayerPage : LocalizedPage
     private void SetFullscreen(bool value)
     {
         fullscreen = value;
+        if (cleanActionsOverlay is not null) cleanActionsOverlay.IsVisible = false;
 #if ANDROID
         if (Ui.IsTelevision)
         {
@@ -463,7 +526,24 @@ public sealed class PlayerPage : LocalizedPage
         ScreenOrientationService.SetFullscreen(value);
         adaptLayout?.Invoke();
     }
-    protected override bool OnBackButtonPressed() { if (!fullscreen) return base.OnBackButtonPressed(); SetFullscreen(false); return true; }
+    protected override bool OnBackButtonPressed()
+    {
+        if (cleanActionsOverlay?.IsVisible == true)
+        {
+            cleanActionsOverlay.IsVisible = false;
+            return true;
+        }
+        if (!fullscreen) return base.OnBackButtonPressed();
+        SetFullscreen(false);
+        return true;
+    }
+    private void OpenCleanActions()
+    {
+        if (cleanActionsOverlay is null) return;
+        cleanActionsOverlay.IsVisible = true;
+        if (Ui.IsTelevision && cleanFirstAction is not null)
+            Dispatcher.Dispatch(() => cleanFirstAction.Focus());
+    }
     private void Stop() { lifetime.Cancel(); countdown?.Cancel(); player.Stop(); }
     protected override void OnDisappearing()
     {

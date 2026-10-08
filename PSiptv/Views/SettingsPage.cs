@@ -28,18 +28,53 @@ public sealed partial class SettingsPage : LocalizedPage
         var sectionTitle = SectionTitle(section);
         Ui.Page(this, sectionTitle);
 
+        var designs = new[] { InterfaceDesign.Current, InterfaceDesign.Clean };
+        var design = new Picker
+        {
+            Title = "Design",
+            ItemsSource = new[] { "Atual", "Clean" }.Select(LanguageService.Text).ToList(),
+            SelectedIndex = Array.IndexOf(designs, DesignService.Mode),
+            MinimumHeightRequest = 48
+        };
+        design.SetDynamicResource(Picker.TextColorProperty, "Ink");
+        design.SelectedIndexChanged += (_, _) =>
+        {
+            if (design.SelectedIndex >= 0) DesignService.Apply(designs[design.SelectedIndex]);
+        };
         var modes = new[] { ThemeMode.Dark, ThemeMode.Light, ThemeMode.System };
+        var palettes = new[] { ThemePalette.Snow, ThemePalette.Graphite, ThemePalette.Sand, ThemePalette.Indigo };
         var theme = new Picker
         {
-            Title = "Perfil de cores",
-            ItemsSource = new[] { "Escuro", "Claro", "Do sistema" },
-            SelectedIndex = Array.IndexOf(modes, ThemeService.Mode),
+            Title = "Tema",
+            ItemsSource = new[] { "Escuro", "Claro", "Do sistema", "Neve", "Grafite", "Areia", "Índigo" }
+                .Select(LanguageService.Text).ToList(),
+            SelectedIndex = ThemeService.Palette == ThemePalette.Default
+                ? Array.IndexOf(modes, ThemeService.Mode)
+                : 3 + Array.IndexOf(palettes, ThemeService.Palette),
             MinimumHeightRequest = 48
         };
         theme.SetDynamicResource(Picker.TextColorProperty, "Ink");
         theme.SelectedIndexChanged += (_, _) =>
         {
-            if (theme.SelectedIndex >= 0) ThemeService.Apply(mode: modes[theme.SelectedIndex]);
+            if (theme.SelectedIndex is >= 0 and < 3)
+            {
+                var mode = modes[theme.SelectedIndex];
+                if (ThemeService.Palette != ThemePalette.Default || ThemeService.Mode != mode)
+                    ThemeService.Apply(mode: mode, palette: ThemePalette.Default);
+            }
+            else if (theme.SelectedIndex >= 3)
+            {
+                var palette = palettes[theme.SelectedIndex - 3];
+                if (ThemeService.Palette == palette) return;
+                var accent = palette switch
+                {
+                    ThemePalette.Snow => "#2563EB",
+                    ThemePalette.Graphite => "#65E0BB",
+                    ThemePalette.Sand => "#C77444",
+                    _ => "#9CA3FF"
+                };
+                ThemeService.Apply(accent: accent, palette: palette);
+            }
         };
         var openLast = new Switch { IsToggled = Preferences.Default.Get("openLastPlaylist", true) };
         openLast.Toggled += (_, e) => Preferences.Default.Set("openLastPlaylist", e.Value);
@@ -96,8 +131,10 @@ public sealed partial class SettingsPage : LocalizedPage
         switch (section)
         {
             case SettingsSection.Theme:
-                stack.Add(Ui.Card(Ui.Stack(Ui.Text("Aparência", 20), Ui.Text("Perfil de cores"), theme,
-                    Ui.Text("Do sistema acompanha automaticamente a aparência do dispositivo.", 12, true),
+                stack.Add(Ui.Card(Ui.Stack(Ui.Text("Aparência", 20), Ui.Text("Design"), design,
+                    Ui.Text("O design Clean usa menus recolhidos e ações contextuais. Pode voltar ao design atual em qualquer altura.", 12, true),
+                    Ui.Text("Tema"), theme,
+                    Ui.Text("Do sistema acompanha automaticamente a aparência do dispositivo. Os temas Neve, Grafite, Areia e Índigo têm cores próprias.", 12, true),
                     Ui.Text("Cor de destaque"), colors)));
                 break;
             case SettingsSection.Lists:
@@ -134,7 +171,7 @@ public sealed partial class SettingsPage : LocalizedPage
         SettingsSection.Player => "Configurações do Player",
         SettingsSection.Vpn => "Ligação VPN",
         SettingsSection.About => "Sobre",
-        SettingsSection.Theme => "Tema",
+        SettingsSection.Theme => "Aparência",
         SettingsSection.Lists => "As Suas Listas",
         _ => "Configurações"
     };

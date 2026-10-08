@@ -69,7 +69,7 @@ public static class Ui
         button.SetDynamicResource(Microsoft.Maui.Controls.Button.BorderColorProperty, "Accent");
         button.Focused += (_, _) => { button.BorderWidth = 3; button.Scale = IsTelevision ? 1.04 : 1; };
         button.Unfocused += (_, _) => { button.BorderWidth = 0; button.Scale = 1; };
-        if (primary) button.TextColor = Color.FromArgb("#071520");
+        if (primary) button.SetDynamicResource(Microsoft.Maui.Controls.Button.TextColorProperty, "OnAccent");
         else button.SetDynamicResource(Microsoft.Maui.Controls.Button.TextColorProperty, "Ink");
         button.Clicked += async (_, _) =>
         {
@@ -251,16 +251,48 @@ public static class Ui
 
     public static CollectionView MediaList()
     {
-        CollectionView collection = null!;
-        collection = new CollectionView
+        var collection = new CollectionView
         {
             SelectionMode = SelectionMode.Single,
             ItemsLayout = new GridItemsLayout(1, ItemsLayoutOrientation.Vertical)
             {
                 HorizontalItemSpacing = 10, VerticalItemSpacing = 10
             },
-            EmptyView = Text("Nenhum conteúdo nesta categoria.", 16, true),
-            ItemTemplate = new DataTemplate(() =>
+            EmptyView = Text("Nenhum conteúdo nesta categoria.", 16, true)
+        };
+        ApplyMediaListDesign(collection);
+        return collection;
+    }
+
+    public static void ApplyMediaListDesign(CollectionView collection)
+    {
+        collection.ItemTemplate = DesignService.IsClean
+            ? new DataTemplate(() =>
+            {
+                var image = new LogoImage { HeightRequest = 146, Aspect = Aspect.AspectFill };
+                var favorite = new FavoriteButton
+                {
+                    IsVisible = !IsTelevision,
+                    IsEnabled = !IsTelevision,
+                    HorizontalOptions = LayoutOptions.End,
+                    VerticalOptions = LayoutOptions.Start
+                };
+                var artwork = new Grid { HeightRequest = 146, IsClippedToBounds = true };
+                artwork.Add(image);
+                artwork.Add(favorite);
+                var title = Text("", 14);
+                title.FontAttributes = FontAttributes.Bold;
+                title.MaxLines = 2;
+                title.LineBreakMode = LineBreakMode.TailTruncation;
+                title.SetBinding(Label.TextProperty, nameof(MediaItem.Name));
+                var category = Text("", 11, true);
+                category.MaxLines = 1;
+                category.SetBinding(Label.TextProperty, nameof(MediaItem.Category));
+                var card = FocusableCard(Stack(artwork, title, category), value => collection.SelectedItem = value);
+                card.Padding = 8;
+                return card;
+            })
+            : new DataTemplate(() =>
             {
                 var image = new LogoImage { WidthRequest = 56, HeightRequest = 56, Aspect = Aspect.AspectFit };
 
@@ -277,9 +309,7 @@ public static class Ui
                 grid.Add(image); grid.Add(Stack(title, category), 1); grid.Add(favorite, 2); grid.Add(Text("›", 26, true), 3);
                 var card = FocusableCard(grid, value => collection.SelectedItem = value); card.Margin = new Thickness(0, 0, 0, 8);
                 return card;
-            })
-        };
-        return collection;
+            });
     }
 
     public static (double Width, double Height) Viewport(VisualElement view)

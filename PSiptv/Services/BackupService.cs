@@ -113,7 +113,8 @@ public static class BackupService
         Preferences.Default.Get("rememberedAudioTrack", ""),
         Preferences.Default.Get("rememberedSubtitleTrack", ""),
         Preferences.Default.Get("reminderMinutesBefore", "5"),
-        Preferences.Default.Get("timeshiftEnabled", true), Preferences.Default.Get("timeshiftMinutes", "30"));
+        Preferences.Default.Get("timeshiftEnabled", true), Preferences.Default.Get("timeshiftMinutes", "30"),
+        DesignService.Mode.ToString(), ThemeService.Palette.ToString());
 
     private static void ApplySettings(BackupSettings settings, IReadOnlySet<string> accountIds)
     {
@@ -156,7 +157,10 @@ public static class BackupService
         if (accountIds.Contains(settings.LastAccountId)) Preferences.Default.Set("lastAccountId", settings.LastAccountId);
         LanguageService.Apply(settings.Language);
         ThemeService.Apply(settings.Accent,
-            Enum.TryParse<ThemeMode>(settings.Theme, out var theme) && Enum.IsDefined(theme) ? theme : ThemeMode.System);
+            Enum.TryParse<ThemeMode>(settings.Theme, out var theme) && Enum.IsDefined(theme) ? theme : ThemeMode.System,
+            Enum.TryParse<ThemePalette>(settings.Palette, out var palette) && Enum.IsDefined(palette) ? palette : ThemePalette.Default);
+        DesignService.Apply(Enum.TryParse<InterfaceDesign>(settings.Design, out var design) && Enum.IsDefined(design)
+            ? design : InterfaceDesign.Current);
         AppServices.Client.UserAgent = settings.UserAgent;
         CatalogUpdateService.ConfigureSchedule();
         _ = ReminderService.RescheduleAllAsync();
@@ -181,5 +185,6 @@ public static class BackupService
         bool CatalogUpdateWifiOnly, bool CatalogUpdateInBackground, string SubtitleMode,
         string PreferredAudioLanguage, string PreferredSubtitleLanguage, bool? RememberTrackSelection,
         int AudioDelayMs, int SubtitleDelayMs, string RememberedAudioTrack, string RememberedSubtitleTrack,
-        string ReminderMinutesBefore, bool? TimeshiftEnabled, string TimeshiftMinutes);
+        string ReminderMinutesBefore, bool? TimeshiftEnabled, string TimeshiftMinutes,
+        string? Design = null, string? Palette = null);
 }

@@ -11,6 +11,7 @@ As opções gerais são persistidas no dispositivo. Histórico (100 entradas), o
 - A fonte EPG aceita XMLTV personalizado ou a fonte do fornecedor. A atualização é feita ao abrir/atualizar o guia. A cache do guia dura até seis horas e apresenta a data da última atualização em memória.
 - Limpeza automática: no arranque. Limpeza manual disponível. Remove cache de imagens e do guia, preservando credenciais, histórico e favoritos.
 - Idioma: português, inglês ou sistema. Reiniciar aplica a escolha aos ecrãs já existentes. Títulos de conteúdos e categorias do fornecedor são preservados.
+- Aparência: o design **Atual** mantém a navegação existente; **Clean** apresenta um menu recolhido, cartões compactos de canais, catálogo em grelha e ações do leitor num painel contextual. O design é independente do tema. Os temas Escuro, Claro, Do sistema, Neve, Grafite, Areia e Índigo podem ser usados em ambos. A cor de destaque continua configurável. Design e tema são guardados no dispositivo e incluídos na cópia de segurança.
 - As opções específicas do LibVLC Android ficam indisponíveis nas restantes plataformas, que mantêm o leitor MediaElement. O agente HTTP continua a aplicar-se aos pedidos ao fornecedor.
 - As páginas de privacidade e termos apresentam informação local; não dependem de URLs legais externos inexistentes.
 
