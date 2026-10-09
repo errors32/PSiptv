@@ -8,9 +8,10 @@
 - Gestão do armazenamento dos podcasts e reutilização de transferências de imagens.
 - Proteção da reprodução contra pedidos antigos e cancelamentos concorrentes.
 - Validação automática no GitHub e roteiro de testes Android TV.
+- Integração dos desenvolvimentos da DEV: perfis VPN, carregamento progressivo dos catálogos e conservação da proporção de vídeo escolhida.
 
 ## Validação
 
-Antes da integração das branches: 207 verificações automatizadas passaram; Android Debug e Windows Release compilaram sem erros.
+207 verificações automatizadas passaram após a integração das branches.
 Bluetooth e navegação com comando de TV requerem validação em equipamentos físicos.
 Esta publicação Git não inclui um novo APK de distribuição.

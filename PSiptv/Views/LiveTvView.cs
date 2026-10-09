@@ -33,6 +33,8 @@ public sealed class LiveTvView : ContentView
     private readonly DataTemplate currentCardsTemplate;
     private readonly DataTemplate cleanCardsTemplate;
     private readonly CollectionView fullscreenChannels;
+    private IReadOnlyList<MediaItem> displayedChannels = [];
+    private bool refreshChannelsAfterLayout;
     private readonly Label fullscreenGroupName = Ui.Text("", 16);
     private readonly Grid channelMenu;
     private readonly Button channelMenuButton;
@@ -166,6 +168,8 @@ public sealed class LiveTvView : ContentView
             if (channels.ItemsSource is not IReadOnlyList<MediaItem> source || e.FirstVisibleItemIndex < 0 || e.FirstVisibleItemIndex >= source.Count) return;
             listAnchors[displayedScope] = CatalogPreferences.ItemKey(source[e.FirstVisibleItemIndex]);
         };
+        channels.Loaded += (_, _) => RefreshChannelsAfterLayout();
+        channels.SizeChanged += (_, _) => RefreshChannelsAfterLayout();
         fullscreenChannels = new CollectionView
         {
             SelectionMode = SelectionMode.Single,
@@ -448,6 +452,8 @@ public sealed class LiveTvView : ContentView
             items = recentChannels.Where(e => PortugueseRadioService.IsRadio(e) == radioMode).ToArray();
             group = LanguageService.Text("Últimos canais");
         }
+        displayedChannels = items;
+        refreshChannelsAfterLayout = !channels.IsLoaded || channels.Width <= 0 || channels.Height <= 0;
         displayedScope = (AppServices.ActiveAccount is { } account ? UserProfileService.Scope(account.Id) : "") +
             ":" + radioMode + ":" + favoritesSection + ":" + group;
         if (channels.ItemsSource is not IEnumerable<MediaItem> previous || !previous.SequenceEqual(items))
@@ -527,6 +533,16 @@ public sealed class LiveTvView : ContentView
         var description = LanguageService.Text(radioMode ? "Mostrar canais de TV" : "Mostrar rádios portuguesas");
         SemanticProperties.SetDescription(radioButton, description);
         ToolTipProperties.SetText(radioButton, description);
+    }
+
+    private void RefreshChannelsAfterLayout()
+    {
+        if (!refreshChannelsAfterLayout || !channels.IsLoaded || channels.Width <= 0 || channels.Height <= 0)
+            return;
+        refreshChannelsAfterLayout = false;
+        // Android can miss the first CollectionView binding made before layout.
+        channels.ItemsSource = null;
+        channels.ItemsSource = displayedChannels;
     }
 
     private Task ToggleViewModeAsync()

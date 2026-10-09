@@ -33,4 +33,4 @@ jobs:
       - name: Install platform workload
         run: dotnet workload install ${{ matrix.workload }}
       - name: Build application
-        run: dotnet build PSiptv/PSiptv.csproj -c Debug -f ${{ matrix.framework }} -p:TargetFrameworks=${{ matrix.framework }}
+        run: dotnet build PSiptv/PSiptv.csproj -c Debug -f ${{ matrix.framework }} -p:AppTargetFrameworks=${{ matrix.framework }}

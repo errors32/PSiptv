@@ -79,9 +79,8 @@ dotnet build PSiptv.Wear/PSiptv.Wear.csproj
 ```
 
 Para distribuir uma atualização Android, use sempre a mesma chave de assinatura da
-versão já instalada e aumente `ApplicationVersion`. A compilação Release produz um
-APK instalável e recusa gerar um pacote sem assinatura. Configure a chave fora do
-repositório antes de publicar:
+versão já instalada e aumente `ApplicationVersion`. Na linha de comandos, a
+compilação Release exige a chave de assinatura fora do repositório:
 
 ```powershell
 $env:PSIPTV_ANDROID_KEYSTORE = "C:\caminho\psiptv.keystore"
@@ -90,6 +89,11 @@ $env:PSIPTV_ANDROID_KEY_PASSWORD = "..."
 $env:PSIPTV_ANDROID_STORE_PASSWORD = "..."
 dotnet publish PSiptv/PSiptv.csproj -c Release -f net10.0-android
 ```
+
+No Visual Studio, selecione **Release → Publicar**, aguarde a criação do arquivo
+e use **Distribuir → Ad Hoc** para escolher a identidade de assinatura existente
+e guardar o APK assinado. A identidade é escolhida nesta etapa, depois da
+compilação do arquivo. Não distribua o APK intermédio antes de o assinar.
 
 O ficheiro a instalar é `com.PS.PSiptv-Signed.apk`; um `.aab` não pode
 ser aberto diretamente no telemóvel ou Android TV. Uma instalação existente só

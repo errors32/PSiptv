@@ -9,13 +9,15 @@ public static class CatalogCacheService
     private const string EncryptionKeyName = "psiptv.catalog-cache.encryption-key.v1";
     private static readonly SemaphoreSlim gate = new(1, 1);
 
-    public static async Task<Dictionary<MediaKind, IReadOnlyList<MediaItem>>> LoadAsync(string accountId)
+    public static async Task<Dictionary<MediaKind, IReadOnlyList<MediaItem>>> LoadAsync(string accountId,
+        Func<MediaKind, IReadOnlyList<MediaItem>, Task>? onLoaded = null, MediaKind? preferredKind = null)
     {
         var result = new Dictionary<MediaKind, IReadOnlyList<MediaItem>>();
         await gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var existing = Enum.GetValues<MediaKind>().Where(kind => File.Exists(PathFor(accountId, kind))).ToArray();
+            var existing = Enum.GetValues<MediaKind>().Where(kind => File.Exists(PathFor(accountId, kind)))
+                .OrderBy(kind => kind == preferredKind ? 0 : 1).ToArray();
             if (existing.Length == 0) return result;
 
             var key = await GetOrCreateKeyAsync().ConfigureAwait(false);
@@ -24,16 +26,20 @@ public static class CatalogCacheService
                 foreach (var kind in existing)
                 {
                     var path = PathFor(accountId, kind);
+                    IReadOnlyList<MediaItem> items;
                     try
                     {
                         var protectedData = await File.ReadAllBytesAsync(path).ConfigureAwait(false);
-                        result[kind] = await Task.Run(() => CatalogCacheCodec.Decode(
+                        items = await Task.Run(() => CatalogCacheCodec.Decode(
                             protectedData, key, Context(accountId, kind))).ConfigureAwait(false);
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or JsonException)
                     {
                         try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                        continue;
                     }
+                    result[kind] = items;
+                    if (onLoaded is not null) await onLoaded(kind, items).ConfigureAwait(false);
                 }
             }
             finally { CryptographicOperations.ZeroMemory(key); }

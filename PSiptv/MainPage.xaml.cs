@@ -491,13 +491,35 @@ public partial class MainPage : ContentPage
         liveCategoryCatalogs.Clear();
         liveCatalogComplete = false;
         liveAllRequested = false;
+        contentCatalogPrepared = false;
         AppServices.Activate(account);
+        CatalogOptionsService.Catalogs.Clear();
+        var activeSession = AppServices.SessionVersion;
         UpdateAccountLabel();
         await FavoritesSyncService.OnStartupAsync();
         PodcastAutomationService.Start();
-        await CatalogOptionsService.LoadAsync(account.Id);
         contentFilter = ReadContentFilter(account.Id);
         UpdateContentFilters();
+        // Favorites live in secure storage and can be shown before the much
+        // larger encrypted channel/movie caches have finished decoding.
+        try { await FavoritesService.LoadAsync(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+        if (AppServices.SessionVersion != activeSession) return;
+        if (IsFavoritesTab) ShowCachedCatalog();
+        else if (IsHomeTab) _ = LoadHomeAsync();
+
+        await CatalogOptionsService.LoadAsync(account.Id, kind =>
+        {
+            if (AppServices.SessionVersion != activeSession) return;
+            if (IsHomeTab && kind == MediaKind.Channel) _ = LoadHomeAsync();
+            else if ((IsLiveTvTab && kind == MediaKind.Channel) ||
+                     (IsContentTab && kind is MediaKind.Movie or MediaKind.Series))
+            {
+                if (kind is MediaKind.Movie or MediaKind.Series) contentCatalogPrepared = true;
+                ShowCachedCatalog(cancelPendingLoad: false);
+            }
+        }, IsContentTab ? SelectedContentKind ?? MediaKind.Movie : MediaKind.Channel);
+        if (AppServices.SessionVersion != activeSession) return;
         contentCatalogPrepared = CatalogOptionsService.Catalogs.ContainsKey(MediaKind.Movie) ||
             CatalogOptionsService.Catalogs.ContainsKey(MediaKind.Series);
         if (CatalogOptionsService.Catalogs.TryGetValue(MediaKind.Channel, out var cachedChannels))
@@ -521,14 +543,14 @@ public partial class MainPage : ContentPage
         }
         if (IsFavoritesTab)
         {
-            ShowCachedCatalog();
+            ShowCachedCatalog(cancelPendingLoad: false);
             if (AppOptions.CatalogUpdateInBackground) _ = LoadFavoritesTabAsync();
             else await LoadFavoritesTabAsync();
             return;
         }
         var hasCachedCatalog = IsContentTab ? contentCatalogPrepared : HasCurrentCatalogCache;
-        ShowCachedCatalog();
-        if (!hasCachedCatalog && AppServices.ActiveAccount?.Id == account.Id)
+        ShowCachedCatalog(cancelPendingLoad: false);
+        if (!hasCachedCatalog && loading is null && AppServices.ActiveAccount?.Id == account.Id)
         {
             if (IsContentTab && AppOptions.CatalogUpdateInBackground) _ = LoadContentInBackgroundAsync(account);
             else if (IsLiveTvTab && AppOptions.CatalogUpdateInBackground) _ = LoadLiveTvInBackgroundAsync(account);
@@ -981,9 +1003,9 @@ public partial class MainPage : ContentPage
         }
     }
 
-    private void ShowCachedCatalog()
+    private void ShowCachedCatalog(bool cancelPendingLoad = true)
     {
-        CancelLoading();
+        if (cancelPendingLoad) CancelLoading();
         spinner.IsRunning = false; spinner.IsVisible = false;
         if (IsFavoritesTab)
         {
@@ -1242,7 +1264,10 @@ public partial class MainPage : ContentPage
     {
         if (!IsFavoritesTab) return;
         Dispatcher.Dispatch(() =>
-            ShowCatalog(FavoritesService.Items.Where(item => item.Kind == MediaKind.Channel).ToArray(), true));
+        {
+            if (IsFavoritesTab)
+                ShowCatalog(FavoritesService.Items.Where(item => item.Kind == MediaKind.Channel).ToArray(), true);
+        });
     }
 
     private void OnDvrChanged()
