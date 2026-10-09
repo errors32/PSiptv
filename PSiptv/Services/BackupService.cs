@@ -8,7 +8,7 @@ public static class BackupService
     private const int Version = 1;
     public const int MaximumFileSize = 50_000_000;
 
-    public static async Task<byte[]> CreateAsync()
+    public static async Task<byte[]> CreateAsync(string? password = null)
     {
         await UserProfileService.LoadAsync();
         var accounts = await AppServices.Accounts.LoadAsync();
@@ -38,17 +38,28 @@ public static class BackupService
             UserProfileService.Profiles.ToArray(),
             personal, catalogOptions, ReadSettings(), BrowserSourcesService.Sources,
             BrowserSourcesService.Default?.Id ?? "", protectedGitHubToken);
-        return await Task.Run(() => JsonSerializer.SerializeToUtf8Bytes(document));
+        return await Task.Run(() =>
+        {
+            var plain = JsonSerializer.SerializeToUtf8Bytes(document);
+            if (password is null) return plain;
+            try { return BackupProtection.Protect(plain, password); }
+            finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain); }
+        });
     }
 
-    public static async Task RestoreAsync(byte[] backupData)
+    public static async Task RestoreAsync(byte[] backupData, string? password = null)
     {
         if (backupData.Length > MaximumFileSize)
             throw new InvalidOperationException("A cópia de segurança excede o limite de 50 MB.");
         BackupDocument document;
         try
         {
-            document = await Task.Run(() => JsonSerializer.Deserialize<BackupDocument>(backupData))
+            document = await Task.Run(() =>
+            {
+                var plain = BackupProtection.Unprotect(backupData, password);
+                try { return JsonSerializer.Deserialize<BackupDocument>(plain); }
+                finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain); }
+            })
                 ?? throw new InvalidOperationException("A cópia de segurança está vazia.");
         }
         catch (JsonException ex)

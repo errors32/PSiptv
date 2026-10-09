@@ -38,13 +38,18 @@ public static class FavoritesSyncService
                 catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException or JsonException)
                 { System.Diagnostics.Debug.WriteLine(ex); return null; }
             }));
-            var newest = snapshots.Where(s => s is not null).OrderByDescending(s => s!.ModifiedAt).FirstOrDefault();
+            var available = snapshots.OfType<FavoriteSnapshot>().OrderBy(s => s.ModifiedAt).ToArray();
             if (session != AppServices.SessionVersion || profileKey != RemoteControlService.CurrentProfileKey) return;
-            if (newest is null)
+            if (available.Length == 0)
                 Preferences.Default.Set("podcast-sync-status." + scope, LanguageService.Text("Nenhuma aplicação compatível encontrada na rede."));
             else
             {
-                var updated = await FavoritesService.ImportNewerAsync(account, profileId, newest);
+                var updated = false;
+                foreach (var snapshot in available)
+                {
+                    if (session != AppServices.SessionVersion || profileKey != RemoteControlService.CurrentProfileKey) return;
+                    updated |= await FavoritesService.ImportNewerAsync(account, profileId, snapshot);
+                }
                 Preferences.Default.Set("podcast-sync-status." + scope,
                     DateTimeOffset.Now.ToString("dd/MM/yyyy HH:mm") + " · " +
                     LanguageService.Text(updated ? "Favoritos e progresso atualizados." : "Verificado: os dados locais estão atualizados."));

@@ -58,7 +58,8 @@ public sealed class PodcastSettingsPage : LocalizedPage
                 Ui.Text("Apagar downloads dos episódios ouvidos"), deletePlayed,
                 Ui.Text("Podcasts escolhidos", 18), feeds)),
             Ui.Card(Ui.Stack(Ui.Text("Sincronização na rede local", 20), syncStatus, sync,
-                Ui.Text("Sincroniza favoritos, episódios ouvidos e posição de reprodução com a mesma lista e perfil. A outra aplicação deve estar aberta na mesma rede.", 13, true)))
+                Ui.Text("Sincroniza favoritos, episódios ouvidos e posição de reprodução com a mesma lista e perfil. A outra aplicação deve estar aberta na mesma rede.", 13, true))),
+            new NearbySyncView()
         );
         body.Padding = 16;
         Content = new ScrollView { Content = body };

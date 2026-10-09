@@ -170,13 +170,32 @@ internal static class AndroidTvFocus
 
         private void OnFocusChange(object? sender, NativeView.FocusChangeEventArgs e)
         {
-            if (e.HasFocus) ShowKeyboard();
+            if (editor is null) return;
+            if (e.HasFocus)
+            {
+                editor.ShowSoftInputOnFocus = true;
+                ShowKeyboard();
+            }
         }
 
         private void OnClick(object? sender, EventArgs e) => ShowKeyboard();
 
         private void OnKeyPress(object? sender, NativeView.KeyEventArgs e)
         {
+            // Once Back dismisses the IME, vertical D-pad navigation must leave
+            // the editor instead of being consumed as text/cursor input.
+            if (editor is not null && e.Event?.Action == KeyEventActions.Down &&
+                e.KeyCode is Keycode.DpadUp or Keycode.DpadDown &&
+                ViewCompat.GetRootWindowInsets(editor)?.IsVisible(WindowInsetsCompat.Type.Ime()) == false)
+            {
+                var direction = e.KeyCode == Keycode.DpadDown
+                    ? FocusSearchDirection.Down : FocusSearchDirection.Up;
+                var next = editor.FocusSearch(direction);
+                if (next is not null && !ReferenceEquals(next, editor) && !ReferenceEquals(next, host))
+                    e.Handled = next.RequestFocus(direction);
+                return;
+            }
+
             if (e.Event?.Action != KeyEventActions.Up || e.KeyCode is not
                 (Keycode.DpadCenter or Keycode.Enter or Keycode.NumpadEnter)) return;
             ShowKeyboard();
@@ -220,16 +239,13 @@ internal static class AndroidTvFocus
             }
             else if (keyboardWasVisible)
             {
-                // Android deliberately keeps an EditText focused when Back closes
-                // the IME. On a television that traps subsequent D-pad input in
-                // the editor, so explicitly return focus to the form.
+                // Back closes only the IME. Preserve focus so the next D-pad
+                // movement starts at this field, without restarting at the top.
+                // Automatic input is re-enabled on the next focus acquisition;
+                // explicit activation can still reopen the keyboard here.
                 keyboardWasVisible = false;
                 monitoringKeyboard = false;
-                var next = editor.FocusSearch(FocusSearchDirection.Down)
-                    ?? editor.FocusSearch(FocusSearchDirection.Up);
-                editor.ClearFocus();
-                if (!ReferenceEquals(host, editor)) host.ClearFocus();
-                next?.RequestFocus();
+                editor.ShowSoftInputOnFocus = false;
                 return;
             }
 

@@ -6,6 +6,7 @@ namespace PSiptv.Views;
 public sealed class GlobalSearchPage : LocalizedPage
 {
     private readonly PlaylistAccount account;
+    private readonly int sessionVersion;
     private readonly SearchBar search = new() { Placeholder = "Pesquisar em canais, programas, filmes e séries" };
     private readonly Label status = Ui.Text("A preparar pesquisa global…", 13, true);
     private readonly ActivityIndicator catalogLoading = new() { IsVisible = true, IsRunning = true, WidthRequest = 22, HeightRequest = 22 };
@@ -16,10 +17,14 @@ public sealed class GlobalSearchPage : LocalizedPage
     private IReadOnlyList<WatchEntry> history = [];
     private CancellationTokenSource? typing;
     private bool loaded;
+    private TextSearchIndex<SearchResult>? index;
+    private bool indexDirty = true;
+    private int searchGeneration;
 
     public GlobalSearchPage(PlaylistAccount account)
     {
         this.account = account;
+        sessionVersion = AppServices.SessionVersion;
         Ui.Page(this, "Pesquisa global");
         search.SetDynamicResource(SearchBar.TextColorProperty, "Ink");
         search.SetDynamicResource(SearchBar.PlaceholderColorProperty, "Muted");
@@ -74,6 +79,7 @@ public sealed class GlobalSearchPage : LocalizedPage
     {
         base.OnAppearing();
         if (!loaded) await LoadAsync();
+        else ApplySearch();
     }
 
     private async Task LoadAsync()
@@ -212,12 +218,18 @@ public sealed class GlobalSearchPage : LocalizedPage
 
     private async Task DebounceSearchAsync(CancellationToken token)
     {
-        try { await Task.Delay(220, token); ApplySearch(); }
+        try { await Task.Delay(220, token); ApplySearch(false); }
         catch (OperationCanceledException) { }
     }
 
-    private void ApplySearch()
+    private void ApplySearch(bool rebuild = true)
     {
+        if (lifetime.IsCancellationRequested || sessionVersion != AppServices.SessionVersion) return;
+        indexDirty |= rebuild;
+        typing?.Cancel();
+        typing?.Dispose();
+        typing = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        var request = ++searchGeneration;
         var query = search.Text?.Trim() ?? "";
         if (query.Length < 2)
         {
@@ -226,43 +238,72 @@ public sealed class GlobalSearchPage : LocalizedPage
             return;
         }
 
-        var found = new List<SearchResult>();
-        var allMedia = catalogs.Values.SelectMany(value => value).Concat(FavoritesService.Items).Concat(history.Select(entry => entry.Item))
+        var media = indexDirty ? catalogs.Values.SelectMany(value => value).Concat(FavoritesService.Items).Concat(history.Select(entry => entry.Item))
             .Where(item => !CatalogOptionsService.Current.IsHidden(item))
-            .DistinctBy(CatalogPreferences.ItemKey);
-        foreach (var item in allMedia.Where(item => Matches(item.Name, query) || Matches(item.Category, query)))
+            .DistinctBy(CatalogPreferences.ItemKey).ToArray() : null;
+        var guide = indexDirty ? programmes.ToArray() : [];
+        var favorites = indexDirty ? FavoritesService.Items.Select(CatalogPreferences.ItemKey).ToHashSet() : [];
+        _ = SearchAsync(query, media, guide, favorites, request, typing.Token);
+    }
+
+    private async Task SearchAsync(string query, MediaItem[]? media, TvProgramme[] guide,
+        HashSet<string> favorites, int request, CancellationToken token)
+    {
+        try
         {
+            var prepared = index;
+            if (media is not null)
+                prepared = await Task.Run(() => BuildIndex(media, guide, favorites, token), token);
+            if (prepared is null) return;
+            var found = await Task.Run(() => prepared.Search(query, 300, token), token);
+            if (token.IsCancellationRequested || request != searchGeneration || sessionVersion != AppServices.SessionVersion ||
+                AppServices.ActiveAccount?.Id != account.Id) return;
+            index = prepared;
+            indexDirty = false;
+            results.ItemsSource = found;
+            results.EmptyView = Ui.Text("Nenhum resultado encontrado.", 15, true);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+    }
+
+    private static TextSearchIndex<SearchResult> BuildIndex(MediaItem[] media, TvProgramme[] guide,
+        HashSet<string> favorites, CancellationToken token)
+    {
+        var documents = new List<SearchDocument<SearchResult>>();
+        foreach (var item in media)
+        {
+            token.ThrowIfCancellationRequested();
             var type = item.Kind switch { MediaKind.Channel => "Canal", MediaKind.Movie => "Filme", MediaKind.Podcast => "Podcasts", _ => item.HasEpisodes ? "Série" : "Episódio" };
-            var favorite = FavoritesService.Contains(item) ? " ★" : "";
-            found.Add(new(item.Name, $"{LanguageService.Text(type)}{favorite} · {item.Category}",
-                item.Kind switch { MediaKind.Channel => "▣", MediaKind.Movie => "▶", _ => "▤" }, item, null, null));
+            var favorite = favorites.Contains(CatalogPreferences.ItemKey(item)) ? " ★" : "";
+            var row = new SearchResult(item.Name, $"{LanguageService.Text(type)}{favorite} · {item.Category}",
+                item.Kind switch { MediaKind.Channel => "▣", MediaKind.Movie => "▶", _ => "▤" }, item, null, null);
+            documents.Add(new(item.Name, [item.Name, item.Category], row));
         }
 
-        var channelByEpg = catalogs.GetValueOrDefault(MediaKind.Channel, [])
-            .Where(channel => channel.EpgId.Length > 0)
+        var channelByEpg = media.Where(channel => channel.Kind == MediaKind.Channel && channel.EpgId.Length > 0)
             .GroupBy(channel => channel.EpgId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         var now = DateTimeOffset.Now;
-        foreach (var programme in programmes.Where(programme => programme.End > now.AddDays(-30) &&
-                     (Matches(programme.Title, query) || Matches(programme.Description, query))))
+        foreach (var programme in guide.Where(programme => programme.End > now.AddDays(-30)))
         {
+            token.ThrowIfCancellationRequested();
             if (!channelByEpg.TryGetValue(programme.ChannelId, out var channel)) continue;
             var playable = programme.End > now || CatchupStream.IsAvailable(channel, programme, now);
-            if (!playable || CatalogOptionsService.Current.IsHidden(channel)) continue;
-            found.Add(new(programme.Title,
+            if (!playable) continue;
+            var row = new SearchResult(programme.Title,
                 $"{LanguageService.Text("Programa")} · {channel.Name} · {AppOptions.FormatTime(programme.Start)}",
-                "◷", channel, programme, channel));
+                "◷", channel, programme, channel);
+            documents.Add(new(programme.Title, [programme.Title, programme.Description], row));
         }
 
-        var ordered = found.OrderBy(row => ExactRank(row.Title, query)).ThenBy(row => row.Title, StringComparer.CurrentCultureIgnoreCase)
-            .Take(300).ToArray();
-        results.ItemsSource = ordered;
-        results.EmptyView = Ui.Text("Nenhum resultado encontrado.", 15, true);
+        return new(documents);
     }
 
     private async void OnSelected(object? sender, SelectionChangedEventArgs e)
     {
-        if (e.CurrentSelection.FirstOrDefault() is not SearchResult result || AppServices.ActiveAccount?.Id != account.Id) return;
+        if (e.CurrentSelection.FirstOrDefault() is not SearchResult result || AppServices.ActiveAccount?.Id != account.Id ||
+            sessionVersion != AppServices.SessionVersion) return;
         results.SelectedItem = null;
         try
         {
@@ -283,10 +324,7 @@ public sealed class GlobalSearchPage : LocalizedPage
         catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
     }
 
-    private static bool Matches(string value, string query) => value.Contains(query, StringComparison.CurrentCultureIgnoreCase);
-    private static int ExactRank(string value, string query) => value.Equals(query, StringComparison.CurrentCultureIgnoreCase) ? 0
-        : value.StartsWith(query, StringComparison.CurrentCultureIgnoreCase) ? 1 : 2;
-    private void Clear() { lifetime.Cancel(); typing?.Cancel(); results.ItemsSource = null; }
+    private void Clear() { lifetime.Cancel(); typing?.Cancel(); searchGeneration++; index = null; results.ItemsSource = null; }
 
     protected override void OnNavigatedFrom(NavigatedFromEventArgs args)
     {

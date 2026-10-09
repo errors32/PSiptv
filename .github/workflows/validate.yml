@@ -1,0 +1,36 @@
+name: Validate
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Core and regression checks
+        run: dotnet run --project PSiptv.Tests/PSiptv.Tests.csproj -c Release
+  apps:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - framework: net10.0-android
+            workload: maui-android
+          - framework: net10.0-windows10.0.19041.0
+            workload: maui-windows
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install platform workload
+        run: dotnet workload install ${{ matrix.workload }}
+      - name: Build application
+        run: dotnet build PSiptv/PSiptv.csproj -c Debug -f ${{ matrix.framework }} -p:TargetFrameworks=${{ matrix.framework }}

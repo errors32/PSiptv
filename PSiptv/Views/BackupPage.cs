@@ -8,6 +8,7 @@ public sealed class BackupPage : LocalizedPage
     private readonly Label status = Ui.Text("", 13, true);
     private readonly VerticalStackLayout content;
     private bool busy;
+    private readonly Switch protect = new() { IsToggled = true };
 
     public BackupPage()
     {
@@ -16,7 +17,8 @@ public sealed class BackupPage : LocalizedPage
         var export = Ui.Card(Ui.Stack(
             Ui.Text("Criar cópia", 20),
             Ui.Text("Inclui listas, perfis, favoritos, histórico e configurações. Guarde o ficheiro no serviço cloud ou dispositivo que preferir.", 13, true),
-            Ui.Text("O ficheiro não é encriptado. Guarde-o num local privado.", 13, true),
+            Ui.Text("Proteger com palavra-passe"), protect,
+            Ui.Text("A proteção encripta toda a cópia, incluindo as credenciais das listas. Sem proteção, o ficheiro contém dados legíveis.", 13, true),
             Ui.Button("Criar e partilhar cópia", ExportAsync, true)));
         var import = Ui.Card(Ui.Stack(
             Ui.Text("Restaurar e sincronizar", 20),
@@ -35,7 +37,7 @@ public sealed class BackupPage : LocalizedPage
             operations = grid;
         }
         else operations = Ui.Stack(export, import);
-        content = Ui.Stack(Ui.Text("Exporte e importe os seus dados", 28), operations, spinner, status);
+        content = Ui.Stack(Ui.Text("Exporte e importe os seus dados", 28), operations, new NearbySyncView(), spinner, status);
         content.Padding = 24;
         content.MaximumWidthRequest = 800;
         Content = new ScrollView { Content = content };
@@ -44,9 +46,14 @@ public sealed class BackupPage : LocalizedPage
     private async Task ExportAsync()
     {
         if (busy) return;
+        string? password;
+        busy = true;
+        try { password = protect.IsToggled ? await BackupPasswordPage.AskAsync(this, true) : null; }
+        finally { busy = false; }
+        if (protect.IsToggled && password is null) return;
         await RunAsync("A criar cópia…", async () =>
         {
-            var payload = await BackupService.CreateAsync();
+            var payload = await BackupService.CreateAsync(password);
             var path = Path.Combine(FileSystem.CacheDirectory,
                 $"PSiptv-backup-{DateTime.Now:yyyyMMdd-HHmmss}.psiptvbackup");
             await File.WriteAllBytesAsync(path, payload);
@@ -78,7 +85,12 @@ public sealed class BackupPage : LocalizedPage
                     throw new InvalidOperationException("A cópia de segurança excede o limite de 50 MB.");
                 output.Write(buffer, 0, read);
             }
-            await BackupService.RestoreAsync(output.ToArray());
+            var payload = output.ToArray();
+            var password = PSiptv.Core.BackupProtection.IsProtected(payload)
+                ? await BackupPasswordPage.AskAsync(this, false) : null;
+            if (PSiptv.Core.BackupProtection.IsProtected(payload) && password is null)
+            { status.Text = LanguageService.Text("Restauro cancelado."); return; }
+            await BackupService.RestoreAsync(payload, password);
             await LanguageService.AlertAsync(this, "Cópia restaurada",
                 "Os dados foram sincronizados. Abra uma lista para continuar.");
             await Navigation.PopToRootAsync(false);

@@ -1,9 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../PSiptv.Core/PSiptv.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="../PSiptv/Services/PodcastCacheService.cs" Link="Services/PodcastCacheService.cs" />
+    <Compile Include="../PSiptv/Services/StorageManagerService.cs" Link="Services/StorageManagerService.cs" />
+  </ItemGroup>
 </Project>

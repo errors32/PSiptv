@@ -44,6 +44,7 @@ public sealed class PlaybackView : ContentView
     private readonly bool recordHistory;
     private readonly bool requireActiveAccount;
     private int generation;
+    private readonly LatestOperation playbackRequests = new();
     private MediaItem? current;
     private MediaItem? lastRequested;
     private string accountId = "";
@@ -413,9 +414,14 @@ public sealed class PlaybackView : ContentView
     public async Task PlayAsync(MediaItem item, double resume = 0)
     {
         if (requireActiveAccount && AppServices.ActiveAccount is null) return;
+        using var operation = playbackRequests.Begin();
+        var request = ++generation;
+        var version = AppServices.SessionVersion;
         if (AudioPlaybackService.IsAudio(item)) await AudioPlaybackService.ActivateAsync(this, item);
+        else if (AudioPlaybackService.Player == this) AudioPlaybackService.Detach(this);
         else await AudioPlaybackService.StopAsync();
         await SavePodcastProgressAsync();
+        if (!operation.IsCurrent || version != AppServices.SessionVersion) return;
         // Starting playback locally is also an explicit choice of receiver.
         // Peers learn the new leader on their next LAN heartbeat and stop their player.
         if (!RemoteControlService.IsActive) RemoteControlService.ClaimActive();
@@ -426,7 +432,9 @@ public sealed class PlaybackView : ContentView
         lastRequested = item;
         podcastArtwork.BindingContext = item;
         podcastCover.IsVisible = PodcastFeed.IsPodcast(item) && !podcastVideoMode;
-        try { await StartPlaybackAsync(item, resume); }
+        try { await StartPlaybackAsync(item, resume, request, operation); }
+        catch (OperationCanceledException) when (operation.Token.IsCancellationRequested) { }
+        catch (Exception) when (!operation.IsCurrent || version != AppServices.SessionVersion) { }
         catch
         {
             await StopCoreAsync();
@@ -546,7 +554,7 @@ public sealed class PlaybackView : ContentView
         ? PlayAsync(item, item.Kind == MediaKind.Channel ? 0 : Math.Max(recoveryPosition, Position))
         : Task.CompletedTask;
 
-    private async Task StartPlaybackAsync(MediaItem item, double resume)
+    private async Task StartPlaybackAsync(MediaItem item, double resume, int request, LatestOperation.Lease operation)
     {
         if (current is not null && CatalogPreferences.ItemKey(current) != CatalogPreferences.ItemKey(item))
         {
@@ -554,19 +562,19 @@ public sealed class PlaybackView : ContentView
             externalSubtitlesEnabled = false;
             externalSubtitle.IsVisible = false;
         }
-        var request = ++generation;
         var account = AppServices.ActiveAccount;
         if (account is null && requireActiveAccount) return;
         var version = AppServices.SessionVersion;
         var source = account is null ? item : StreamPreferences.ApplyFormat(account, item, AppOptions.StreamFormat);
-        if (account is not null) source = await AppServices.Client.ResolveStreamAsync(account, source, CancellationToken.None);
+        if (account is not null) source = await AppServices.Client.ResolveStreamAsync(account, source, operation.Token);
         var sourceUri = new Uri(source.Url, UriKind.Absolute);
         if (!sourceUri.IsFile && sourceUri.Scheme != "content") WebAddress.Require(source.Url);
-        await gate.WaitAsync();
+        await gate.WaitAsync(operation.Token);
         try
         {
+            if (!operation.IsCurrent || request != generation || version != AppServices.SessionVersion) return;
             await ReleaseAsync();
-            if (request != generation || version != AppServices.SessionVersion) return;
+            if (!operation.IsCurrent || request != generation || version != AppServices.SessionVersion) return;
             current = item; accountId = account?.Id ?? ""; session = version;
 #if ANDROID || WINDOWS
 #if WINDOWS
@@ -704,20 +712,22 @@ public sealed class PlaybackView : ContentView
 
     private async Task StopCoreAsync()
     {
+        playbackRequests.Cancel();
+        var stoppingGeneration = ++generation;
         AudioPlaybackService.Detach(this);
         PlaybackStopping?.Invoke();
         if (!IsLoaded) AppServices.PlaybackSuspended -= Stop;
         await SavePodcastProgressAsync();
+        if (stoppingGeneration != generation) return;
         CancelReconnect();
         reconnectAttempt = 0;
-        ++generation;
 #if ANDROID || WINDOWS
         controlsHiding?.Cancel();
 #endif
         timer.Stop();
         if (PictureInPictureService.Current == this) PictureInPictureService.Current = null;
         await gate.WaitAsync();
-        try { await ReleaseAsync(); } finally { gate.Release(); }
+        try { if (stoppingGeneration == generation) await ReleaseAsync(); } finally { gate.Release(); }
     }
 
     public void Pause()
@@ -833,7 +843,8 @@ public sealed class PlaybackView : ContentView
             StatusChanged?.Invoke(LanguageService.Format(
                 "A restabelecer transmissão · tentativa {0} de {1}…", attempt,
                 StreamRecoveryPolicy.MaxAttempts));
-            await StartPlaybackAsync(item, resume);
+            using var operation = playbackRequests.Begin();
+            await StartPlaybackAsync(item, resume, ++generation, operation);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)

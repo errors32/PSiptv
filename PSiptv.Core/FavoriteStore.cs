@@ -10,7 +10,8 @@ public sealed record PodcastPlaybackEntry(MediaItem Item, double Position, doubl
 public sealed record FavoriteSnapshot(DateTimeOffset ModifiedAt, IReadOnlyList<FavoriteEntry> Entries,
     IReadOnlyDictionary<string, PodcastHeardEntry> HeardEpisodes,
     IReadOnlyDictionary<string, PodcastPlaybackEntry>? PodcastProgress = null,
-    IReadOnlyDictionary<string, DateTimeOffset>? PodcastVisits = null);
+    IReadOnlyDictionary<string, DateTimeOffset>? PodcastVisits = null,
+    FavoriteSyncState? Sync = null);
 
 public sealed class FavoriteStore(
     Func<string, Task<string?>> read,
@@ -103,15 +104,24 @@ public sealed class FavoriteStore(
 
     public async Task<bool> ImportNewerAsync(string scope, PlaylistAccount account, FavoriteSnapshot snapshot)
     {
+        ProfileSyncProtocol.Validate(snapshot);
         await gate.WaitAsync();
         try
         {
             var local = await ReadSnapshotAsync(scope);
+            if (snapshot.Sync is not null)
+            {
+                var merged = FavoriteMerge.Merge(local, snapshot);
+                if (!merged.Changed) return false;
+                await SaveAsync(scope, merged.Snapshot, false);
+                return true;
+            }
             if (snapshot.ModifiedAt <= local.ModifiedAt) return false;
             var entries = snapshot.Entries.Select(e => new FavoriteEntry(ItemKey(account, e.Item), e.Item))
                 .DistinctBy(e => e.Key).ToArray();
             await SaveAsync(scope, snapshot with { Entries = entries, HeardEpisodes = Prune(snapshot.HeardEpisodes, entries),
-                PodcastProgress = PruneProgress(snapshot.PodcastProgress, entries) });
+                PodcastProgress = PruneProgress(snapshot.PodcastProgress, entries),
+                PodcastVisits = snapshot.PodcastVisits ?? local.PodcastVisits });
             return true;
         }
         finally { gate.Release(); }
@@ -202,8 +212,11 @@ public sealed class FavoriteStore(
         return now > previous ? now : previous.AddTicks(1);
     }
 
-    private Task SaveAsync(string scope, FavoriteSnapshot snapshot) =>
-        write(SnapshotKey(scope), JsonSerializer.Serialize(snapshot));
+    private async Task SaveAsync(string scope, FavoriteSnapshot snapshot, bool trackChanges = true)
+    {
+        if (trackChanges) snapshot = FavoriteMerge.Track(await ReadSnapshotAsync(scope), snapshot);
+        await write(SnapshotKey(scope), JsonSerializer.Serialize(snapshot));
+    }
 
     private async Task<FavoriteSnapshot> ReadSnapshotAsync(string accountId)
     {

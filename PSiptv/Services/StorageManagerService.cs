@@ -19,7 +19,8 @@ public static class StorageManagerService
         var cache = Sum(
             MeasureDirectory(Path.Combine(FileSystem.AppDataDirectory, "catalog-cache")),
             MeasureDirectory(Path.Combine(FileSystem.AppDataDirectory, "epg-cache")),
-            MeasureDirectory(Path.Combine(FileSystem.CacheDirectory, "logos")));
+            MeasureDirectory(Path.Combine(FileSystem.CacheDirectory, "logos")),
+            MeasureDirectory(PodcastCacheService.CacheDirectory));
         var temporary = Sum(
             MeasureDirectory(Path.Combine(FileSystem.CacheDirectory, "timeshift")),
             MeasureDirectory(Path.Combine(FileSystem.CacheDirectory, "external-playback")));
@@ -33,6 +34,7 @@ public static class StorageManagerService
     {
         CacheService.Clear();
         await CatalogCacheService.ClearAllAsync();
+        await PodcastCacheService.ClearAsync();
         TimeshiftService.Cleanup();
         PlaybackService.CleanOldPlaylists();
     }

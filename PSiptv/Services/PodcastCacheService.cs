@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
 using PSiptv.Core;
 
@@ -8,14 +7,15 @@ public sealed record PodcastCacheEntry(DateTimeOffset FetchedAt, IReadOnlyList<M
 
 public static class PodcastCacheService
 {
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> gates = new();
-    private static string PathFor(string key) => Path.Combine(FileSystem.CacheDirectory, "podcasts",
+    // One gate also serializes eviction and clearing with reads and writes.
+    private static readonly SemaphoreSlim gate = new(1);
+    internal static string CacheDirectory => Path.Combine(FileSystem.CacheDirectory, "podcasts");
+    private static string PathFor(string key) => Path.Combine(CacheDirectory,
         PodcastFeed.Id(key)[8..] + ".json");
 
     public static async Task<PodcastCacheEntry?> ReadAsync(string key, CancellationToken token = default)
     {
         var path = PathFor(key);
-        var gate = gates.GetOrAdd(key, _ => new(1));
         await gate.WaitAsync(token);
         try
         {
@@ -30,15 +30,15 @@ public static class PodcastCacheService
     public static async Task SaveAsync(string key, IReadOnlyList<MediaItem> items, CancellationToken token)
     {
         var path = PathFor(key);
-        var gate = gates.GetOrAdd(key, _ => new(1));
         await gate.WaitAsync(token);
         try
         {
             var folder = Path.GetDirectoryName(path)!;
             Directory.CreateDirectory(folder);
-            await using (var output = File.Create(path + ".tmp"))
-                await JsonSerializer.SerializeAsync(output, new PodcastCacheEntry(DateTimeOffset.UtcNow, items), cancellationToken: token);
-            File.Move(path + ".tmp", path, true);
+            var payload = await Task.Run(() => JsonSerializer.SerializeToUtf8Bytes(
+                new PodcastCacheEntry(DateTimeOffset.UtcNow, items)), token);
+            if (payload.Length > 16 * 1024 * 1024) return;
+            await AtomicFile.WriteAsync(path, payload, token);
             long retainedBytes = 0;
             var retainedCount = 0;
             foreach (var old in new DirectoryInfo(folder).GetFiles("*.json").OrderByDescending(f => f.LastWriteTimeUtc))
@@ -49,6 +49,22 @@ public static class PodcastCacheService
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { System.Diagnostics.Debug.WriteLine(ex); }
+        finally { gate.Release(); }
+    }
+
+    public static async Task ClearAsync()
+    {
+        await gate.WaitAsync();
+        try
+        {
+            if (!Directory.Exists(CacheDirectory)) return;
+            foreach (var path in Directory.EnumerateFiles(CacheDirectory))
+            {
+                try { File.Delete(path); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
         finally { gate.Release(); }
     }
 }

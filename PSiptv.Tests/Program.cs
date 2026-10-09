@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using PSiptv.Core;
 
+try
+{
 var passed = 0;
 Check(AudioPlaybackPolicy.PersistsAcrossNavigation(new MediaItem("radio-browser:station", "Radio", "", MediaKind.Channel)),
     "Rádio mantém a sessão ao navegar");
@@ -704,7 +706,7 @@ var deletion = await favorites.SnapshotAsync(podcastScope);
 Check(deletion.Entries.Count == 0 && deletion.ModifiedAt > remoteSnapshot.ModifiedAt &&
     !await favorites.ImportNewerAsync(podcastScope, account, remoteSnapshot),
     "Remoções atualizam a data e uma cópia remota antiga não recupera favoritos apagados");
-var emptyRemote = deletion with { ModifiedAt = deletion.ModifiedAt.AddMinutes(1) };
+var emptyRemote = deletion with { ModifiedAt = deletion.ModifiedAt.AddMinutes(1), Sync = null };
 Check(await favorites.ImportNewerAsync(podcastScope, account, emptyRemote) &&
     (await favorites.SnapshotAsync(podcastScope)).Entries.Count == 0,
     "Sincronização aceita uma lista vazia mais recente");
@@ -756,6 +758,13 @@ options.Custom.Add(new() { Name = "Protected shows", Kind = MediaKind.Series, It
 options.Locked.Add(CatalogPreferences.CategoryKey(MediaKind.Series, "Protected shows"));
 Check(options.IsLocked(new("episode1", "Episode", "Drama", MediaKind.Series, "https://example.test/ep", ParentSeriesId: "show1")), "Episódios herdam bloqueio de séries em categorias personalizadas");
 Console.WriteLine($"\n{passed} verificações concluídas.");
+await RegressionTests.RunAsync();
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine(ex);
+    Environment.ExitCode = 1;
+}
 
 sealed class FakeHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
 {
