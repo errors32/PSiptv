@@ -85,7 +85,7 @@ public partial class MainPage : ContentPage
         var nav = new Grid { Padding = new Thickness(8, 6, 8, 8) };
         nav.SetDynamicResource(BackgroundColorProperty, "Surface");
         var tabColumn = 0;
-        if (!Ui.IsTelevision)
+        if (!DeviceProfile.IsAutomotive)
         {
             nav.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
             AddTab(nav, tabColumn++, MainSection.Home, "Início", "nav_home.png");
@@ -160,12 +160,14 @@ public partial class MainPage : ContentPage
         void RefreshDesign()
         {
             var clean = DesignService.IsClean;
+            brand.FontFamily = DesignService.HeadingFont;
             menuButton.IsVisible = clean;
             castButton.IsVisible = !clean;
             remoteButton.IsVisible = !clean;
             if (!clean) cleanMenu.IsVisible = false;
             Ui.ApplyMediaListDesign(items);
             liveTv.ApplyDesign();
+            home.ApplyDesign();
             UpdateTabs();
             AdaptLayout();
         }
@@ -175,6 +177,32 @@ public partial class MainPage : ContentPage
             var viewport = Ui.Viewport(this);
             var landscape = viewport.Width > viewport.Height;
             var compactLandscape = !Ui.IsTelevision && landscape && viewport.Height < 600;
+            var style = DesignService.Mode;
+            var sidebar = !fullscreen && style == InterfaceDesign.Library && viewport.Width >= 900;
+            var topNavigation = !fullscreen && style is InterfaceDesign.Cinema or InterfaceDesign.Magazine or InterfaceDesign.Console;
+            root.ColumnDefinitions.Clear();
+            root.ColumnDefinitions.Add(new ColumnDefinition(sidebar ? new GridLength(180) : GridLength.Star));
+            if (sidebar) root.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            root.RowDefinitions[0].Height = topNavigation ? GridLength.Auto : GridLength.Star;
+            root.RowDefinitions[1].Height = sidebar ? new GridLength(0) : topNavigation ? GridLength.Star : GridLength.Auto;
+            Grid.SetColumn(grid, sidebar ? 1 : 0);
+            Grid.SetRow(grid, topNavigation ? 1 : 0);
+            Grid.SetRow(nav, topNavigation || sidebar ? 0 : 1);
+            Grid.SetRowSpan(nav, sidebar ? 2 : 1);
+            Grid.SetColumnSpan(loadingOverlay, sidebar ? 2 : 1);
+            Grid.SetColumnSpan(cleanMenu, sidebar ? 2 : 1);
+            nav.ColumnDefinitions.Clear();
+            nav.RowDefinitions.Clear();
+            var tabIndex = 0;
+            foreach (var button in tabs.Values)
+            {
+                if (sidebar) nav.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                else nav.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+                Grid.SetColumn(button, sidebar ? 0 : tabIndex);
+                Grid.SetRow(button, sidebar ? tabIndex : 0);
+                tabIndex++;
+            }
+            nav.VerticalOptions = sidebar ? LayoutOptions.Fill : LayoutOptions.End;
             header.IsVisible = !fullscreen && (!IsBrowserTab || DesignService.IsClean);
             filters.IsVisible = !fullscreen && !IsBrowserTab && !IsFavoritesTab && !IsHomeTab;
             contentFilters.IsVisible = !fullscreen && IsContentTab;
@@ -185,14 +213,15 @@ public partial class MainPage : ContentPage
             grid.Padding = fullscreen ? 0 : IsBrowserTab ? new Thickness(6) : Ui.IsTelevision ? new Thickness(28, 12) : compactLandscape ? new Thickness(12, 4) : DesignService.IsClean ? new Thickness(14, 10) : new Thickness(16, 12);
             nav.Padding = Ui.IsTelevision ? new Thickness(28, 4, 28, 8) : DesignService.IsClean ? new Thickness(6, 3, 6, 5) : new Thickness(8, 6, 8, 8);
             grid.RowSpacing = fullscreen ? 0 : DesignService.IsClean ? 5 : 8;
-            Ui.UpdateColumns(items, viewport.Width - grid.Padding.HorizontalThickness,
-                DesignService.IsClean ? 170 : 320, DesignService.IsClean ? 6 : 4);
+            Ui.UpdateColumns(items, viewport.Width - grid.Padding.HorizontalThickness - (sidebar ? 180 : 0),
+                DesignService.UsesPosters ? 170 : 320, DesignService.UsesPosters ? 6 : 4);
             foreach (var button in tabs.Values)
             {
-                button.HeightRequest = Ui.IsTelevision ? 50 : compactLandscape ? 44 : DesignService.IsClean ? 54 : 68;
+                button.HeightRequest = style == InterfaceDesign.Console ? 86 : sidebar ? 58 : Ui.IsTelevision ? 50 : compactLandscape ? 44 : DesignService.IsClean ? 54 : 68;
+                button.CornerRadius = (int)DesignService.CardRadius;
                 button.Padding = new Thickness(4, Ui.IsTelevision || compactLandscape || DesignService.IsClean ? 2 : 8);
                 button.ContentLayout = new Button.ButtonContentLayout(
-                    compactLandscape || Ui.IsTelevision ? Button.ButtonContentLayout.ImagePosition.Left : Button.ButtonContentLayout.ImagePosition.Top, 4);
+                    sidebar || style == InterfaceDesign.Magazine || compactLandscape || Ui.IsTelevision ? Button.ButtonContentLayout.ImagePosition.Left : Button.ButtonContentLayout.ImagePosition.Top, 4);
             }
         }
         adaptLayout = AdaptLayout;
@@ -1150,7 +1179,9 @@ public partial class MainPage : ContentPage
     private static MainSection InitialMainSection()
     {
         var saved = ReadMainSection();
-        return Ui.IsTelevision && saved == MainSection.Home ? MainSection.LiveTv : saved;
+        return DesignService.Mode == InterfaceDesign.TvGuide ? MainSection.LiveTv
+            : Ui.IsTelevision && saved == MainSection.Home && DesignService.Mode is InterfaceDesign.Current or InterfaceDesign.Clean
+                ? MainSection.LiveTv : saved;
     }
     private static ContentFilterMode ReadContentFilter(string accountId) =>
         Enum.TryParse<ContentFilterMode>(Preferences.Default.Get(ContentFilterPreferenceKey(accountId), "All"), out var saved)

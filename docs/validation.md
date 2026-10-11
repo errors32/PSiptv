@@ -4,6 +4,13 @@ Execute `dotnet run --project PSiptv.Tests/PSiptv.Tests.csproj -c Release` para 
 
 As regressões abrangem pedidos de reprodução substituídos, cancelamento, escrita atómica de imagens, transferências partilhadas, pesquisa e ordenação num catálogo de 20 000 conteúdos, backups protegidos e antigos, sincronização por alteração individual, remoções e troca bidirecional pelo protocolo Bluetooth. A troca do protocolo é testada com streams locais; não substitui testes do rádio Bluetooth nos equipamentos.
 
+## Aparência
+
+- Em Perfil → Configurações → Aparência, alterne entre os oito estilos, com e sem histórico/favoritos. Confirme que a retoma, abertura de detalhes, favoritos e programação continuam funcionais.
+- Combine cada estilo com Meia-noite, Floresta, Oceano, Terracota e Ameixa; altere também a cor de destaque. Verifique contraste, reinício e exportação/reposição das escolhas na cópia de segurança.
+- Em Biblioteca, redimensione a janela acima e abaixo de 900 px para verificar navegação lateral/inferior. Teste também a rotação e o ecrã inteiro durante a reprodução; as sobreposições devem cobrir todo o ecrã.
+- Em Guia TV, confirme a grelha na TV ao Vivo e que a alternância manual de vista continua disponível. Em Consola, teste o foco pelo comando remoto.
+
 ## Android TV
 
 Com uma TV/emulador ligado ao ADB, abra uma pesquisa e mantenha o teclado visível. Execute:

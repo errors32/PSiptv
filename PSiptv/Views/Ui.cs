@@ -20,7 +20,8 @@ public static class Ui
     {
         var fontSize = DeviceProfile.IsAutomotive ? Math.Max(24, size * 1.15)
             : IsTelevision ? Math.Clamp(size, 14, 22) : size;
-        var label = new LocalizedLabel { Text = LanguageService.Text(text), FontSize = fontSize };
+        var label = new LocalizedLabel { Text = LanguageService.Text(text), FontSize = fontSize,
+            FontFamily = size >= 16 ? DesignService.HeadingFont : null };
         label.SetDynamicResource(Label.TextColorProperty, muted ? "Muted" : "Ink");
         return label;
     }
@@ -59,7 +60,7 @@ public static class Ui
     {
         var button = new Button
         {
-            Text = LanguageService.Text(text), CornerRadius = 12,
+            Text = LanguageService.Text(text), CornerRadius = (int)Math.Min(DesignService.CardRadius, 18),
             Padding = DeviceProfile.IsAutomotive ? new Thickness(24, 16)
                 : IsTelevision ? new Thickness(14, 8) : new Thickness(16, 12),
             FontSize = DeviceProfile.IsAutomotive ? 24 : IsTelevision ? 16 : 14,
@@ -103,7 +104,7 @@ public static class Ui
 
     public static Border Card(View content)
     {
-        var border = new Border { Content = content, Padding = IsTelevision ? 12 : 18, StrokeThickness = 0, StrokeShape = new RoundRectangle { CornerRadius = 16 } };
+        var border = new Border { Content = content, Padding = IsTelevision ? 12 : 18, StrokeThickness = 0, StrokeShape = new RoundRectangle { CornerRadius = DesignService.CardRadius } };
         border.SetDynamicResource(VisualElement.BackgroundColorProperty, "Surface");
         return border;
     }
@@ -113,7 +114,7 @@ public static class Ui
         var border = new TvFocusableBorder
         {
             Content = content, Padding = IsTelevision ? 10 : 18, StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 16 },
+            StrokeShape = new RoundRectangle { CornerRadius = DesignService.CardRadius },
             Activate = activate
         };
         border.SetDynamicResource(VisualElement.BackgroundColorProperty, "Surface");
@@ -276,10 +277,11 @@ public static class Ui
 
     public static void ApplyMediaListDesign(CollectionView collection)
     {
-        collection.ItemTemplate = DesignService.IsClean
+        collection.ItemTemplate = DesignService.UsesPosters
             ? new DataTemplate(() =>
             {
-                var image = new LogoImage { HeightRequest = 146, Aspect = Aspect.AspectFill };
+                var posterHeight = DesignService.Mode == InterfaceDesign.Library ? 240 : 146;
+                var image = new LogoImage { HeightRequest = posterHeight, Aspect = Aspect.AspectFill };
                 var favorite = new FavoriteButton
                 {
                     IsVisible = !IsTelevision,
@@ -287,7 +289,7 @@ public static class Ui
                     HorizontalOptions = LayoutOptions.End,
                     VerticalOptions = LayoutOptions.Start
                 };
-                var artwork = new Grid { HeightRequest = 146, IsClippedToBounds = true };
+                var artwork = new Grid { HeightRequest = posterHeight, IsClippedToBounds = true };
                 artwork.Add(image);
                 artwork.Add(favorite);
                 var title = Text("", 14);

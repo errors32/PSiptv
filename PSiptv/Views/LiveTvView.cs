@@ -53,6 +53,7 @@ public sealed class LiveTvView : ContentView
     private string recentHistoryScope = "";
     private readonly Dictionary<string, WeakReference<TvFocusableBorder>> channelCards = [];
     private bool guideMode;
+    private InterfaceDesign? appliedDesign;
     private bool radioMode;
     private bool favoritesSection;
     private int radioRequest;
@@ -514,7 +515,14 @@ public sealed class LiveTvView : ContentView
     public void ApplyDesign()
     {
         var clean = DesignService.IsClean;
-        channels.ItemTemplate = clean ? cleanCardsTemplate : currentCardsTemplate;
+        if (appliedDesign != DesignService.Mode)
+        {
+            if (DesignService.Mode == InterfaceDesign.TvGuide) SetGuideMode(true);
+            else if (appliedDesign == InterfaceDesign.TvGuide) SetGuideMode(false);
+            appliedDesign = DesignService.Mode;
+        }
+        var template = clean ? cleanCardsTemplate : currentCardsTemplate;
+        channels.ItemTemplate = new DataTemplate(() => template.CreateContent());
         layout.RowSpacing = clean ? 6 : 10;
         channelPanel.RowSpacing = clean ? 5 : Ui.IsTelevision ? 5 : 10;
         channelMenu.HeightRequest = clean ? -1 : 220;

@@ -187,8 +187,8 @@ public sealed class AccountStore
 }
 
 public enum ThemeMode { System, Dark, Light }
-public enum ThemePalette { Default, Snow, Graphite, Sand, Indigo }
-public enum InterfaceDesign { Current, Clean }
+public enum ThemePalette { Default, Snow, Graphite, Sand, Indigo, Midnight, Forest, Ocean, Terracotta, Plum }
+public enum InterfaceDesign { Current, Clean, Cinema, Magazine, TvGuide, Console, Library, Modular }
 
 public static class DesignService
 {
@@ -196,6 +196,21 @@ public static class DesignService
         && Enum.IsDefined(mode) ? mode : InterfaceDesign.Current;
 
     public static bool IsClean => Mode == InterfaceDesign.Clean;
+    public static bool UsesPosters => Mode is InterfaceDesign.Clean or InterfaceDesign.Cinema or InterfaceDesign.Library;
+    public static string? HeadingFont => Mode == InterfaceDesign.Magazine
+        ? DeviceInfo.Platform == DevicePlatform.Android ? "serif" : "Georgia" : null;
+    public static double CardRadius => Mode switch
+    {
+        InterfaceDesign.Magazine => 0, InterfaceDesign.TvGuide => 4,
+        InterfaceDesign.Library => 6, InterfaceDesign.Console => 24,
+        InterfaceDesign.Modular => 20, _ => 16
+    };
+    public static string Name(InterfaceDesign mode) => mode switch
+    {
+        InterfaceDesign.Current => "Atual", InterfaceDesign.Magazine => "Revista",
+        InterfaceDesign.TvGuide => "Guia TV", InterfaceDesign.Console => "Consola",
+        InterfaceDesign.Library => "Biblioteca", _ => mode.ToString()
+    };
     public static event Action? Changed;
 
     public static void Apply(InterfaceDesign mode)
@@ -226,8 +241,8 @@ public static class ThemeService
         var app = Application.Current!;
         app.UserAppTheme = Palette switch
         {
-            ThemePalette.Snow or ThemePalette.Sand => AppTheme.Light,
-            ThemePalette.Graphite or ThemePalette.Indigo => AppTheme.Dark,
+            ThemePalette.Snow or ThemePalette.Sand or ThemePalette.Terracotta => AppTheme.Light,
+            ThemePalette.Graphite or ThemePalette.Indigo or ThemePalette.Midnight or ThemePalette.Forest or ThemePalette.Ocean or ThemePalette.Plum => AppTheme.Dark,
             _ => selected switch
             {
                 ThemeMode.Dark => AppTheme.Dark,
@@ -241,7 +256,7 @@ public static class ThemeService
     public static void RefreshColors()
     {
         var app = Application.Current!;
-        var isDark = Palette is ThemePalette.Graphite or ThemePalette.Indigo ||
+        var isDark = Palette is ThemePalette.Graphite or ThemePalette.Indigo or ThemePalette.Midnight or ThemePalette.Forest or ThemePalette.Ocean or ThemePalette.Plum ||
                      (Palette == ThemePalette.Default &&
                       (Mode == ThemeMode.Dark || (Mode == ThemeMode.System && app.RequestedTheme == AppTheme.Dark)));
         var resources = app.Resources;
@@ -251,6 +266,11 @@ public static class ThemeService
             ThemePalette.Graphite => ("#111419", "#1D232B", "#203B35", "#F3F5F7", "#AAB6C2", "#303942", "#65E0BB"),
             ThemePalette.Sand => ("#F8F3EB", "#FFFDF9", "#F6E4D6", "#2F2822", "#776C62", "#E8DCCD", "#C77444"),
             ThemePalette.Indigo => ("#151A31", "#202743", "#343864", "#F2F3FF", "#B3BAD8", "#364063", "#9CA3FF"),
+            ThemePalette.Midnight => ("#101114", "#1D1F24", "#302D24", "#F5F3ED", "#B7B5AE", "#383A41", "#EAC77A"),
+            ThemePalette.Forest => ("#101C18", "#1A2B24", "#294237", "#EFF7F1", "#A7BFB1", "#355144", "#A3D9A5"),
+            ThemePalette.Ocean => ("#0E1C29", "#172C3D", "#23475A", "#ECF6FC", "#A8C1D1", "#345365", "#78D4E8"),
+            ThemePalette.Terracotta => ("#F7F0E9", "#FFFAF5", "#F1DFD0", "#342820", "#786153", "#DBC8B9", "#A64B32"),
+            ThemePalette.Plum => ("#211522", "#322137", "#4B3151", "#FAEFF9", "#CCB0CB", "#604263", "#E8ACE0"),
             _ => isDark
                 ? ("#0F172C", "#172235", "#30366D", "#F3F7FF", "#A9B8CD", "#30435A", "#36D6B0")
                 : ("#F2F5FA", "#FFFFFF", "#E2E5FA", "#142238", "#52647A", "#D9E1EC", "#36D6B0")

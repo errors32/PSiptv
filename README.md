@@ -22,6 +22,8 @@ Algumas listas IPTV, transmissões ou URLs podem ser ilegais ou não autorizadas
 
 ## Funcionalidades
 
+- **Estilos e temas independentes**: em Perfil → Configurações → Aparência, escolha Atual, Clean, Cinema, Revista, Guia TV, Consola, Biblioteca ou Modular. Cinema destaca a retoma e usa capas; Revista organiza secções em listas numeradas; Guia TV privilegia a programação; Consola amplia cartões e navegação; Biblioteca usa capas verticais e navegação lateral em ecrãs largos; Modular distribui as secções do início em módulos. Os temas Meia-noite, Floresta, Oceano, Terracota e Ameixa juntam-se aos existentes e podem ser combinados com qualquer estilo. As escolhas são guardadas e incluídas nas cópias de segurança.
+
 - Contas Xtream Codes: servidor, utilizador e palavra-passe, com validação de autenticação e estado da conta.
 - Listas M3U por HTTP/HTTPS: nomes, logótipos, categorias, `tvg-id`, `group-title`, `EXTGRP`, endereços relativos e fonte XMLTV no cabeçalho.
 - **Fontes adicionais**: ficheiros M3U locais, Stalker Portal por endereço MAC, Jellyfin e Plex por token, Tvheadend com autenticação Basic opcional e HDHomeRun por descoberta do alinhamento do dispositivo. As ligações são validadas antes de guardar; streams Stalker temporárias são resolvidas apenas no momento da reprodução.

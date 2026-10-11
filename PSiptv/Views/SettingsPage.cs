@@ -28,11 +28,11 @@ public sealed partial class SettingsPage : LocalizedPage
         var sectionTitle = SectionTitle(section);
         Ui.Page(this, sectionTitle);
 
-        var designs = new[] { InterfaceDesign.Current, InterfaceDesign.Clean };
+        var designs = Enum.GetValues<InterfaceDesign>();
         var design = new Picker
         {
             Title = "Design",
-            ItemsSource = new[] { "Atual", "Clean" }.Select(LanguageService.Text).ToList(),
+            ItemsSource = designs.Select(DesignService.Name).Select(LanguageService.Text).ToList(),
             SelectedIndex = Array.IndexOf(designs, DesignService.Mode),
             MinimumHeightRequest = 48
         };
@@ -42,11 +42,11 @@ public sealed partial class SettingsPage : LocalizedPage
             if (design.SelectedIndex >= 0) DesignService.Apply(designs[design.SelectedIndex]);
         };
         var modes = new[] { ThemeMode.Dark, ThemeMode.Light, ThemeMode.System };
-        var palettes = new[] { ThemePalette.Snow, ThemePalette.Graphite, ThemePalette.Sand, ThemePalette.Indigo };
+        var palettes = Enum.GetValues<ThemePalette>().Where(value => value != ThemePalette.Default).ToArray();
         var theme = new Picker
         {
             Title = "Tema",
-            ItemsSource = new[] { "Escuro", "Claro", "Do sistema", "Neve", "Grafite", "Areia", "Índigo" }
+            ItemsSource = new[] { "Escuro", "Claro", "Do sistema", "Neve", "Grafite", "Areia", "Índigo", "Meia-noite", "Floresta", "Oceano", "Terracota", "Ameixa" }
                 .Select(LanguageService.Text).ToList(),
             SelectedIndex = ThemeService.Palette == ThemePalette.Default
                 ? Array.IndexOf(modes, ThemeService.Mode)
@@ -71,6 +71,11 @@ public sealed partial class SettingsPage : LocalizedPage
                     ThemePalette.Snow => "#2563EB",
                     ThemePalette.Graphite => "#65E0BB",
                     ThemePalette.Sand => "#C77444",
+                    ThemePalette.Midnight => "#EAC77A",
+                    ThemePalette.Forest => "#A3D9A5",
+                    ThemePalette.Ocean => "#78D4E8",
+                    ThemePalette.Terracotta => "#A64B32",
+                    ThemePalette.Plum => "#E8ACE0",
                     _ => "#9CA3FF"
                 };
                 ThemeService.Apply(accent: accent, palette: palette);
@@ -132,9 +137,9 @@ public sealed partial class SettingsPage : LocalizedPage
         {
             case SettingsSection.Theme:
                 stack.Add(Ui.Card(Ui.Stack(Ui.Text("Aparência", 20), Ui.Text("Design"), design,
-                    Ui.Text("O design Clean usa menus recolhidos e ações contextuais. Pode voltar ao design atual em qualquer altura.", 12, true),
+                    Ui.Text("O estilo altera a navegação e a disposição dos conteúdos. O tema altera as cores. Pode combinar qualquer estilo com qualquer tema.", 12, true),
                     Ui.Text("Tema"), theme,
-                    Ui.Text("Do sistema acompanha automaticamente a aparência do dispositivo. Os temas Neve, Grafite, Areia e Índigo têm cores próprias.", 12, true),
+                    Ui.Text("Do sistema acompanha a aparência do dispositivo. Os restantes temas têm uma paleta própria, independente do estilo.", 12, true),
                     Ui.Text("Cor de destaque"), colors)));
                 break;
             case SettingsSection.Lists:
