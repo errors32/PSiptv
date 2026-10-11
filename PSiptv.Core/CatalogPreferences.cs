@@ -18,6 +18,7 @@ public sealed class CatalogPreferences
     public bool ParentalEnabled { get; set; }
     public string ParentalPinHash { get; set; } = "";
     public Dictionary<MediaKind, CatalogSort> Sorting { get; set; } = [];
+    public EpgConfiguration Epg { get; set; } = new();
     public static string CategoryKey(MediaKind kind, string category) => $"{(int)kind}:{category}";
     public static string ItemKey(MediaItem item) => $"{(int)item.Kind}:{(item.Url.Length > 0 ? item.Url : item.Id)}";
     public bool IsHidden(MediaItem item) => Hidden.Contains(CategoryKey(item.Kind, item.Category));

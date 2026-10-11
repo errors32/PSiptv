@@ -12,6 +12,8 @@ public sealed class SmartHomeView : ContentView
     private Grid? modules;
     private int moduleCount;
     private bool wide;
+    private PersonalLibrary personal = new();
+    private readonly Dictionary<string, List<View>> sectionViews = [];
 
     public SmartHomeView()
     {
@@ -50,11 +52,13 @@ public sealed class SmartHomeView : ContentView
             var favoritesTask = FavoritesService.LoadAsync();
             var historyTask = HistoryService.LoadAsync(account.Id);
             var recordingsTask = DvrService.LoadAsync(account.Id);
-            await Task.WhenAll(favoritesTask, historyTask, recordingsTask);
+            var personalTask = ExperienceService.LoadAsync(account.Id);
+            await Task.WhenAll(favoritesTask, historyTask, recordingsTask, personalTask);
             cancellation.Token.ThrowIfCancellationRequested();
             if (!IsCurrent(account, request)) return;
 
             var history = historyTask.Result;
+            personal = personalTask.Result;
             var recordings = recordingsTask.Result;
             var favorites = FavoritesService.Items;
             Render(account, history, favorites, recordings, []);
@@ -112,6 +116,7 @@ public sealed class SmartHomeView : ContentView
         content.Clear();
         modules = null;
         moduleCount = 0;
+        sectionViews.Clear();
         content.Spacing = DesignService.Mode == InterfaceDesign.Magazine ? 30 : 22;
         var refresh = Ui.Button("Atualizar início", () => LoadAsync(account,
             CatalogOptionsService.Catalogs.GetValueOrDefault(MediaKind.Channel) ?? []));
@@ -135,11 +140,13 @@ public sealed class SmartHomeView : ContentView
         }
 
         var sectionCount = 0;
+        sectionCount += AddShelf("Fixados", personal.Pinned.Where(i => !CatalogOptionsService.Current.IsHidden(i)).Select(item =>
+            new HomeCard(item, item.Name, item.Category, () => OpenMediaAsync(account, item))));
         if (DesignService.Mode == InterfaceDesign.TvGuide)
             sectionCount += AddShelf("A começar", upcoming.Select(item => new HomeCard(item.Channel,
                 item.Programme.Title, $"{item.Channel.Name} · {AppOptions.FormatTime(item.Programme.Start)}",
                 () => FindPage().Navigation.PushAsync(new GuidePage(account, item.Channel)))));
-        sectionCount += AddShelf("Continuar a ver", SmartHomePolicy.ContinueWatching(history).Select(entry =>
+        sectionCount += AddShelf("Continuar a ver", SmartHomePolicy.ContinueWatching(history).Where(e => personal.State(e.Item) != ViewingState.Completed).Select(entry =>
             new HomeCard(entry.Item, entry.Item.Name,
                 LanguageService.Format("Retomar em {0}", FormatPosition(entry.PositionSeconds)),
                 () => PlaybackService.PlayAsync(FindPage(), entry.Item, resume: entry.PositionSeconds))));
@@ -162,9 +169,40 @@ public sealed class SmartHomeView : ContentView
         if (sectionCount == 0)
             content.Add(Ui.Card(Ui.Stack(Ui.Text("A sua página inicial ainda está vazia.", 17),
                 Ui.Text("Veja um canal, adicione favoritos ou agende uma gravação para começar.", 13, true))));
+        ArrangeSections();
     }
 
     private int AddShelf(string title, IEnumerable<HomeCard> supplied)
+    {
+        if (personal.HiddenHome.Contains(title)) return 0;
+        var container = modules is null ? (IEnumerable<View>)content.Children.Cast<View>() : modules.Children.Cast<View>();
+        var before = container.ToHashSet();
+        var count = BuildShelf(title, supplied);
+        container = modules is null ? content.Children.Cast<View>() : modules.Children.Cast<View>();
+        sectionViews[title] = container.Where(v => !before.Contains(v)).ToList();
+        return count;
+    }
+    private void ArrangeSections()
+    {
+        var ordered = sectionViews.OrderBy(pair => { var i = personal.HomeOrder.IndexOf(pair.Key); return i < 0 ? int.MaxValue : i; }).SelectMany(p => p.Value).ToArray();
+        if (modules is null)
+        {
+            foreach (var view in ordered) content.Remove(view);
+            foreach (var view in ordered) content.Add(view);
+        }
+        else
+        {
+            modules.Clear(); modules.RowDefinitions.Clear(); var slot = 0; var columns = modules.ColumnDefinitions.Count;
+            foreach (var view in ordered)
+            {
+                if (slot % columns == 0) modules.RowDefinitions.Add(new(GridLength.Auto));
+                Grid.SetColumnSpan(view, slot == 0 && wide ? columns : 1);
+                modules.Add(view, slot % columns, slot / columns);
+                slot += slot == 0 && wide ? columns : 1;
+            }
+        }
+    }
+    private int BuildShelf(string title, IEnumerable<HomeCard> supplied)
     {
         var cards = supplied.ToArray();
         if (cards.Length == 0) return 0;

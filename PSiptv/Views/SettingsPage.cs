@@ -141,6 +141,7 @@ public sealed partial class SettingsPage : LocalizedPage
                     Ui.Text("Tema"), theme,
                     Ui.Text("Do sistema acompanha a aparência do dispositivo. Os restantes temas têm uma paleta própria, independente do estilo.", 12, true),
                     Ui.Text("Cor de destaque"), colors)));
+                stack.Add(BuildExperienceAppearance());
                 break;
             case SettingsSection.Lists:
                 stack.Add(Ui.Button("+ Adicionar lista", () => Navigation.PushAsync(new AccountPage()), true));
@@ -149,6 +150,7 @@ public sealed partial class SettingsPage : LocalizedPage
                 break;
             default:
                 stack.Add(BuildFeatures(section));
+                if (section == SettingsSection.General) stack.Add(BuildExperienceSettings());
                 if (section == SettingsSection.General)
                     stack.Add(Ui.Card(Ui.Stack(Ui.Text("Arranque e segurança", 20),
                         Ui.Text("Abrir a última lista ao iniciar"), openLast,

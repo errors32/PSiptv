@@ -1,5 +1,20 @@
 # Validação
 
+## Novidades da 1.6.1
+
+- Reordene/oculte secções, fixe conteúdos e troque de perfil/lista. Confirme isolamento, reinício e reposição de backup antigo e atual.
+- Compare a pré-visualização dos estilos/temas, texto grande e cartões compactos; navegue com teclado/comando e confirme foco visível e animações reduzidas.
+- Adicione listas normais e protegidas ao catálogo unificado. Cancele o PIN, bloqueie durante a carga e abra resultados de origens diferentes; confirme pesquisa por tipo e troca de origem autorizada.
+- Escolha versões HD/FHD/4K do mesmo canal, simule falhas após as reconexões e confirme substituição apenas quando ativada, excluindo canais ocultos/bloqueados.
+- Configure duas fontes XMLTV, um identificador manual e correções horárias distintas. Confirme guia, pesquisa e gravações recorrentes, incluindo uma fonte indisponível com/sem cache.
+- Crie/renomeie/elimine coleções, marque estados e conclua um filme. Confirme remoção da retoma, conservação do catálogo e isolamento entre perfis.
+- Num Android TV físico, ative a integração, autorize a fila, atualize favoritos e abra a retoma pelo launcher com a aplicação fechada e aberta. Confirme que listas protegidas e conteúdos bloqueados/ocultos não aparecem, que um item ocultado pelo utilizador não reaparece em Watch Next e que desativar remove as entradas da aplicação.
+- Agende programas sobrepostos e adjacentes, com margens e limites distintos; confirme conflitos e execução. Numa lista de teste, ative retenção e confirme que só gravações concluídas antigas são removidas, preservando agendadas, em curso e falhadas.
+- Consulte resolução/codecs/bitrate/arranque/interrupções em reprodução real. Troque rapidamente entre conteúdos e confirme que os diagnósticos pertencem à sessão correta, sem URLs ou credenciais.
+- Teste S/H/F/Espaço e F3/F2/F11, incluindo campos de texto, modais, regresso do leitor e reconstrução dos cartões. Confirme que mudar de sessão não restaura foco antigo.
+
+As 229 verificações automatizadas passaram; Windows compilou e o código Android compilou. A execução destas verificações de dispositivo e a compilação iOS/Mac Catalyst não foram realizadas neste ambiente.
+
 Execute `dotnet run --project PSiptv.Tests/PSiptv.Tests.csproj -c Release` para os testes do núcleo e as regressões. O processo termina com erro quando uma verificação falha. O workflow `.github/workflows/validate.yml` executa estes testes e compila Android e Windows em cada push e pull request. Não publica versões nem usa credenciais de assinatura.
 
 As regressões abrangem pedidos de reprodução substituídos, cancelamento, escrita atómica de imagens, transferências partilhadas, pesquisa e ordenação num catálogo de 20 000 conteúdos, backups protegidos e antigos, sincronização por alteração individual, remoções e troca bidirecional pelo protocolo Bluetooth. A troca do protocolo é testada com streams locais; não substitui testes do rádio Bluetooth nos equipamentos.

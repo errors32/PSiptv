@@ -156,7 +156,7 @@ public sealed class GlobalSearchPage : LocalizedPage
             {
                 using var epgRequest = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
                 epgRequest.CancelAfter(TimeSpan.FromSeconds(45));
-                programmes = await AppServices.Client.GetFullGuideAsync(guideAccount, epgRequest.Token);
+                programmes = await EpgService.GetFullGuideAsync(guideAccount, catalogs.GetValueOrDefault(MediaKind.Channel) ?? [], epgRequest.Token);
                 if (AppServices.ActiveAccount?.Id != account.Id) return;
                 status.Text = failures.Count == 0
                     ? LanguageService.Format("Pesquisa pronta · {0} conteúdos e {1} programas", contentCount, programmes.Count)

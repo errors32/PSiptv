@@ -149,6 +149,7 @@ public sealed class UserProfilesPage : LocalizedPage
                 await ReminderService.DeleteProfileAsync(account.Id, profile.Id);
                 await DvrService.DeleteProfileAsync(account.Id, profile.Id);
                 await OfflineDownloadService.DeleteProfileAsync(account.Id, profile.Id);
+                await ExperienceService.DeleteAsync(account.Id, profile.Id);
             }
             await UserProfileService.DeleteAsync(profile.Id);
             Render();

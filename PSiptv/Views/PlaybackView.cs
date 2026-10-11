@@ -60,6 +60,9 @@ public sealed class PlaybackView : ContentView
     private int reconnectAttempt;
     private CancellationTokenSource? reconnecting;
     private double recoveryPosition;
+    private readonly HashSet<string> failedAlternatives = [];
+    private PlaybackDiagnostic? diagnostic;
+    public MediaItem? ActiveMedia => current;
     private readonly IDispatcherTimer timer;
     private readonly Label externalSubtitle = Ui.Text("", 24);
     private IReadOnlyList<SubtitleCue> externalCues = [];
@@ -171,7 +174,12 @@ public sealed class PlaybackView : ContentView
     private void NotifyControlsVisibilityChanged(bool visible) => ControlsVisibilityChanged?.Invoke(visible);
     private async void RecordPodcastCompletion()
     {
-        if (current is not { } item || !PodcastFeed.IsPodcast(item)) return;
+        if (current is not { } item) return;
+        if (!PodcastFeed.IsPodcast(item))
+        {
+            await Task.WhenAll(UpdateViewingStateAsync(ViewingState.Completed), SaveDiagnosticAsync("Concluído"));
+            return;
+        }
         try { await FavoritesService.SetHeardAsync(item, true, accountId, session); }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
     }
@@ -416,6 +424,21 @@ public sealed class PlaybackView : ContentView
         if (requireActiveAccount && AppServices.ActiveAccount is null) return;
         using var operation = playbackRequests.Begin();
         var request = ++generation;
+        var requestedSession = AppServices.SessionVersion;
+        if (item.Kind == MediaKind.Channel && !AudioPlaybackService.IsAudio(item) && AppServices.ActiveAccount is { } preferredAccount)
+        {
+            var data = await ExperienceService.LoadAsync(preferredAccount.Id);
+            var preferred = data.PreferredChannels.GetValueOrDefault(ChannelGroupPolicy.Key(item));
+            var alternative = ChannelGroupPolicy.Alternatives(item, CatalogOptionsService.Catalogs.GetValueOrDefault(MediaKind.Channel) ?? [],
+                preferred, Preferences.Default.Get("channels.quality", "auto")).FirstOrDefault(c => !CatalogOptionsService.Current.IsLocked(c) && !CatalogOptionsService.Current.IsHidden(c));
+            if (!operation.IsCurrent || requestedSession != AppServices.SessionVersion) return;
+            if (alternative is not null && (preferred is not null || Preferences.Default.Get("channels.quality", "auto") != "auto")) item = alternative;
+        }
+        await SaveDiagnosticAsync("Trocado");
+        if (!operation.IsCurrent || requestedSession != AppServices.SessionVersion) return;
+        failedAlternatives.Clear();
+        diagnostic = new(Guid.NewGuid().ToString("N"), AppServices.ActiveAccount?.Id ?? "", UserProfileService.Active.Id,
+            item.Name, DateTimeOffset.UtcNow, 0, 0, "vídeo n/d", "áudio n/d", 0, "A iniciar");
         var version = AppServices.SessionVersion;
         if (AudioPlaybackService.IsAudio(item)) await AudioPlaybackService.ActivateAsync(this, item);
         else if (AudioPlaybackService.Player == this) AudioPlaybackService.Detach(this);
@@ -716,6 +739,7 @@ public sealed class PlaybackView : ContentView
         var stoppingGeneration = ++generation;
         AudioPlaybackService.Detach(this);
         PlaybackStopping?.Invoke();
+        await SaveDiagnosticAsync("Parado");
         if (!IsLoaded) AppServices.PlaybackSuspended -= Stop;
         await SavePodcastProgressAsync();
         if (stoppingGeneration != generation) return;
@@ -807,6 +831,10 @@ public sealed class PlaybackView : ContentView
 
     private void PlaybackOpened()
     {
+        if (diagnostic is not null && diagnostic.StartupSeconds == 0)
+            diagnostic = diagnostic with { StartupSeconds = Math.Max(.01, (DateTimeOffset.UtcNow - diagnostic.Started).TotalSeconds) };
+        _ = UpdateViewingStateAsync(ViewingState.Watching);
+        _ = SaveDiagnosticAsync("A reproduzir");
         reconnectAttempt = 0;
 #if ANDROID || WINDOWS
         bufferingSince = 0;
@@ -817,9 +845,28 @@ public sealed class PlaybackView : ContentView
     private async Task HandlePlaybackFailureAsync(string diagnosis)
     {
         if (current is not { } item || reconnecting is not null) return;
+        if (diagnostic is not null) diagnostic = diagnostic with { Interruptions = diagnostic.Interruptions + 1 };
+        _ = SaveDiagnosticAsync("Interrupção");
         SetKeepScreenOn(false);
         if (reconnectAttempt >= StreamRecoveryPolicy.MaxAttempts)
         {
+            if (ExperienceService.AutoFallback && item.Kind == MediaKind.Channel && !AudioPlaybackService.IsAudio(item) &&
+                session == AppServices.SessionVersion && AppServices.ActiveAccount?.Id == accountId)
+            {
+                failedAlternatives.Add(CatalogPreferences.ItemKey(item));
+                var next = ChannelGroupPolicy.Alternatives(item, CatalogOptionsService.Catalogs.GetValueOrDefault(MediaKind.Channel) ?? [])
+                    .FirstOrDefault(c => !failedAlternatives.Contains(CatalogPreferences.ItemKey(c)) && !CatalogOptionsService.Current.IsLocked(c) && !CatalogOptionsService.Current.IsHidden(c));
+                if (next is not null)
+                {
+                    reconnectAttempt = 0;
+                    StatusChanged?.Invoke("A tentar alternativa: " + next.Name);
+                    using var operation = playbackRequests.Begin();
+                    try { await StartPlaybackAsync(next, 0, ++generation, operation); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); MediaFailed?.Invoke(this, EventArgs.Empty); }
+                    return;
+                }
+            }
             StatusChanged?.Invoke(LanguageService.Format(
                 "Falha do stream após {0} tentativas · {1}", StreamRecoveryPolicy.MaxAttempts, diagnosis));
             MediaFailed?.Invoke(this, EventArgs.Empty);
@@ -867,8 +914,41 @@ public sealed class PlaybackView : ContentView
         var source = reconnecting;
         reconnecting = null;
         if (source is null) return;
-        source.Cancel();
-        source.Dispose();
+        source.Cancel(); source.Dispose();
+    }
+
+    private async Task UpdateViewingStateAsync(ViewingState state)
+    {
+        if (!recordHistory || current is not { } item || item.Kind == MediaKind.Channel || PodcastFeed.IsPodcast(item) ||
+            session != AppServices.SessionVersion || AppServices.ActiveAccount?.Id != accountId) return;
+        try { await ExperienceService.ChangeAsync(d => d.SetState(item, state)); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+    }
+    private async Task SaveDiagnosticAsync(string outcome)
+    {
+        if (diagnostic is null) return;
+        try
+        {
+#if ANDROID || WINDOWS
+            if (player is not null && media is not null)
+            {
+                uint width = 0, height = 0;
+                player.Size(0, ref width, ref height);
+                var tracks = media.Tracks;
+                var videoTrack = tracks.FirstOrDefault(t => t.TrackType == TrackType.Video);
+                var audioTrack = tracks.FirstOrDefault(t => t.TrackType == TrackType.Audio);
+                diagnostic = diagnostic with
+                {
+                    Video = (width > 0 ? $"{width}×{height} " : "") + (videoTrack.Codec != 0 ? media.CodecDescription(TrackType.Video, videoTrack.Codec) : "vídeo n/d"),
+                    Audio = audioTrack.Codec != 0 ? media.CodecDescription(TrackType.Audio, audioTrack.Codec) : "áudio n/d",
+                    BitrateKbps = Math.Max(diagnostic.BitrateKbps, Math.Max(media.Statistics.InputBitrate, media.Statistics.DemuxBitrate) * 8000)
+                };
+            }
+#endif
+            var snapshot = diagnostic with { Outcome = outcome };
+            await PlaybackDiagnosticsService.SaveAsync(snapshot);
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
     }
 
 #if ANDROID || WINDOWS

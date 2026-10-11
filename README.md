@@ -187,3 +187,7 @@ Validação realizada: 121 verificações passaram; Windows e Android compilaram
 
 
 
+## Novidades da 1.6.1
+
+A versão 1.6.1 acrescenta início personalizável, pré-visualização nativa e acessibilidade da aparência, catálogo unificado, alternativas de canais, várias fontes XMLTV, coleções e estados, integração opcional com o launcher Android TV, controlo de conflitos e retenção DVR, diagnóstico de reprodução e atalhos com memória de foco. Consulte o [guia de utilização](docs/experience-1.6.1.md) e as [notas da versão](artifacts/RELEASE_NOTES_1.6.1.md).
+

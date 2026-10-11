@@ -20,7 +20,7 @@ public static class Ui
     {
         var fontSize = DeviceProfile.IsAutomotive ? Math.Max(24, size * 1.15)
             : IsTelevision ? Math.Clamp(size, 14, 22) : size;
-        var label = new LocalizedLabel { Text = LanguageService.Text(text), FontSize = fontSize,
+        var label = new LocalizedLabel { Text = LanguageService.Text(text), FontSize = fontSize * ExperienceService.TextScale,
             FontFamily = size >= 16 ? DesignService.HeadingFont : null };
         label.SetDynamicResource(Label.TextColorProperty, muted ? "Muted" : "Ink");
         return label;
@@ -63,12 +63,12 @@ public static class Ui
             Text = LanguageService.Text(text), CornerRadius = (int)Math.Min(DesignService.CardRadius, 18),
             Padding = DeviceProfile.IsAutomotive ? new Thickness(24, 16)
                 : IsTelevision ? new Thickness(14, 8) : new Thickness(16, 12),
-            FontSize = DeviceProfile.IsAutomotive ? 24 : IsTelevision ? 16 : 14,
+            FontSize = (DeviceProfile.IsAutomotive ? 24 : IsTelevision ? 16 : 14) * ExperienceService.TextScale,
             MinimumHeightRequest = DeviceProfile.IsAutomotive ? 64 : IsTelevision ? 48 : 46
         };
         button.SetDynamicResource(VisualElement.BackgroundColorProperty, primary ? "Accent" : "Surface");
         button.SetDynamicResource(Microsoft.Maui.Controls.Button.BorderColorProperty, "Accent");
-        button.Focused += (_, _) => { button.BorderWidth = 3; button.Scale = IsTelevision ? 1.04 : 1; };
+        button.Focused += (_, _) => { button.BorderWidth = 3; button.Scale = IsTelevision && !ExperienceService.ReduceMotion ? 1.04 : 1; };
         button.Unfocused += (_, _) => { button.BorderWidth = 0; button.Scale = 1; };
         if (primary) button.SetDynamicResource(Microsoft.Maui.Controls.Button.TextColorProperty, "OnAccent");
         else button.SetDynamicResource(Microsoft.Maui.Controls.Button.TextColorProperty, "Ink");
@@ -104,7 +104,7 @@ public static class Ui
 
     public static Border Card(View content)
     {
-        var border = new Border { Content = content, Padding = IsTelevision ? 12 : 18, StrokeThickness = 0, StrokeShape = new RoundRectangle { CornerRadius = DesignService.CardRadius } };
+        var border = new Border { Content = content, Padding = ExperienceService.Compact ? 8 : IsTelevision ? 12 : 18, StrokeThickness = 0, StrokeShape = new RoundRectangle { CornerRadius = DesignService.CardRadius } };
         border.SetDynamicResource(VisualElement.BackgroundColorProperty, "Surface");
         return border;
     }
@@ -113,13 +113,13 @@ public static class Ui
     {
         var border = new TvFocusableBorder
         {
-            Content = content, Padding = IsTelevision ? 10 : 18, StrokeThickness = 0,
+            Content = content, Padding = ExperienceService.Compact ? 8 : IsTelevision ? 10 : 18, StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = DesignService.CardRadius },
             Activate = activate
         };
         border.SetDynamicResource(VisualElement.BackgroundColorProperty, "Surface");
         border.SetDynamicResource(Border.StrokeProperty, "Accent");
-        border.Focused += (_, _) => border.SetFocusHighlight(true);
+        border.Focused += (_, _) => { border.SetFocusHighlight(true); FocusMemory.Remember(border); };
         border.Unfocused += (_, _) => border.SetFocusHighlight(false);
         if (!IsTelevision)
         {
@@ -142,6 +142,8 @@ public static class Ui
 
     public static void Page(ContentPage page, string title)
     {
+        ShortcutService.Attach(page);
+        page.Appearing += (_, _) => page.Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(120), () => FocusMemory.Restore(page));
         page.ControlTemplate = new ControlTemplate(() =>
         {
             var layout = new Grid
@@ -363,7 +365,7 @@ public sealed class TvFocusableBorder : Border
     internal void SetFocusHighlight(bool focused)
     {
         StrokeThickness = focused ? (Ui.IsTelevision ? 5 : 4) : 0;
-        Scale = focused ? (Ui.IsTelevision ? 1.06 : 1.03) : 1;
+        Scale = focused && !ExperienceService.ReduceMotion ? (Ui.IsTelevision ? 1.06 : 1.03) : 1;
         SetDynamicResource(VisualElement.BackgroundColorProperty, focused ? "ProfileTile" : "Surface");
         ZIndex = focused ? 10 : 0;
     }

@@ -8,6 +8,7 @@ public static class DvrService
     private static readonly SemaphoreSlim gate = new(1, 1);
     private static readonly SemaphoreSlim recurringGate = new(1, 1);
     private static readonly Dictionary<string, CancellationTokenSource> active = [];
+    private static readonly Dictionary<string, string> activeAccounts = [];
     private static readonly HttpClient http = new() { Timeout = Timeout.InfiniteTimeSpan };
     private static Timer? timer;
     private static DateTimeOffset lastRecurringRefresh = DateTimeOffset.MinValue;
@@ -358,7 +359,7 @@ public static class DvrService
         try
         {
             var now = DateTimeOffset.Now;
-            var guide = await AppServices.Client.GetFullGuideAsync(account, token);
+            var guide = await EpgService.GetFullGuideAsync(account, channels, token);
             var programmes = guide.GroupBy(item => item.ChannelId, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
             var added = 0;
@@ -394,6 +395,8 @@ public static class DvrService
             recording = new DvrRecording(id, rule.AccountId, rule.ProfileId, channel,
                 programme.Title, programme.Start, programme.End,
                 SeriesRuleId: rule.Id, EpisodeKey: episodeKey);
+            recording = DvrConflictPolicy.WithMargins(recording, ExperienceService.Number("dvr.before", 0), ExperienceService.Number("dvr.after", 0));
+            await CheckConflictsAsync(recording);
             items.Add(recording);
             await WriteAsync(rule.AccountId, rule.ProfileId, items);
         }
@@ -405,12 +408,14 @@ public static class DvrService
 
     private static async Task AddAsync(DvrRecording recording)
     {
+        recording = DvrConflictPolicy.WithMargins(recording, ExperienceService.Number("dvr.before", 0), ExperienceService.Number("dvr.after", 0));
 #if ANDROID
         await PSiptv.AndroidNotificationPermission.RequestAsync();
 #endif
         await gate.WaitAsync();
         try
         {
+            await CheckConflictsAsync(recording);
             var items = await ReadAsync(recording.AccountId, recording.ProfileId);
             items.RemoveAll(item => item.Id == recording.Id);
             items.Add(recording);
@@ -422,6 +427,14 @@ public static class DvrService
 #if !ANDROID
         if (recording.Start <= DateTimeOffset.Now) _ = StartScheduledAsync(recording.Id);
 #endif
+    }
+
+    private static async Task CheckConflictsAsync(DvrRecording recording)
+    {
+        var recordings = new List<DvrRecording>();
+        foreach (var profile in UserProfileService.Profiles) recordings.AddRange(await ReadAsync(recording.AccountId, profile.Id));
+        if (DvrConflictPolicy.ExceedsLimit(recording, recordings, Math.Clamp(ExperienceService.Number("dvr.limit", 2), 1, 4)))
+            throw new InvalidOperationException("Conflito de gravação: o limite simultâneo desta lista seria ultrapassado. Altere o horário, cancele outro agendamento ou ajuste o limite nas configurações gerais.");
     }
 
     public static async Task RemoveAsync(DvrRecording recording)
@@ -543,7 +556,22 @@ public static class DvrService
         {
             lastRecurringRefresh = DateTimeOffset.UtcNow;
             _ = RefreshAllRecurringSafelyAsync();
+            _ = CleanExpiredSafelyAsync();
         }
+    }
+
+    private static async Task CleanExpiredSafelyAsync()
+    {
+        var days = Math.Clamp(ExperienceService.Number("dvr.retention", 0), 0, 365);
+        if (days == 0) return;
+        try
+        {
+            foreach (var account in await AppServices.Accounts.LoadAsync())
+            foreach (var profile in UserProfileService.Profiles)
+            foreach (var recording in await LoadAsync(account.Id, profile.Id))
+                if (DvrConflictPolicy.CanClean(recording, DateTimeOffset.UtcNow, days)) await RemoveAsync(recording);
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
     }
 
     private static async Task RefreshAllRecurringSafelyAsync()
@@ -566,10 +594,18 @@ public static class DvrService
         if (recording is null || !DvrRecordingPolicy.IsDue(recording, DateTimeOffset.Now)) return;
 
         var cancellation = new CancellationTokenSource();
+        var capacityExceeded = false;
         lock (active)
         {
             if (active.ContainsKey(recording.Id)) { cancellation.Dispose(); return; }
-            active[recording.Id] = cancellation;
+            capacityExceeded = activeAccounts.Values.Count(id => id == recording.AccountId) >= Math.Clamp(ExperienceService.Number("dvr.limit", 2), 1, 4);
+            if (!capacityExceeded) { active[recording.Id] = cancellation; activeAccounts[recording.Id] = recording.AccountId; }
+        }
+        if (capacityExceeded)
+        {
+            cancellation.Dispose();
+            await UpdateAsync(recording.Id, item => item with { State = DvrRecordingState.Failed, Error = "Limite de gravações simultâneas atingido." });
+            DvrPlatformScheduler.Cancel(recording.Id); Changed?.Invoke(); return;
         }
         await UpdateAsync(recording.Id, item => item with { State = DvrRecordingState.Recording, Error = "" });
         var fileName = DvrRecordingPolicy.SafeFileStem(recording.ProgrammeTitle, recording.Start) + "_" + recording.Id[..8] + ".ts";
@@ -620,7 +656,7 @@ public static class DvrService
         }
         finally
         {
-            lock (active) active.Remove(recording.Id);
+            lock (active) { active.Remove(recording.Id); activeAccounts.Remove(recording.Id); }
             cancellation.Dispose();
             DvrPlatformScheduler.Cancel(recording.Id);
             Changed?.Invoke();

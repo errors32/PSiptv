@@ -54,6 +54,9 @@ public sealed class ProfilePage : LocalizedPage
         accountCard.SetDynamicResource(BackgroundColorProperty, "ProfileTile");
         actions =
         [
+            Tile("Personalizar início", FaIcons.LayerGroup, () => Navigation.PushAsync(new HomeCustomizationPage())),
+            Tile("Coleções e estados", FaIcons.LayerGroup, () => Navigation.PushAsync(new CollectionsPage())),
+            Tile("Diagnóstico de reprodução", FaIcons.Stethoscope, () => Navigation.PushAsync(new PlaybackDiagnosticsPage())),
             Tile("Perfis de utilizador", FaIcons.Users, () => Navigation.PushAsync(new UserProfilesPage(changeProfile))),
             Tile("Podcasts favoritos e ouvidos", FaIcons.Podcast, () => Navigation.PushAsync(new PodcastsPage(favoritesOnly: true))),
             Tile("Continuar a ouvir", FaIcons.CirclePlay, () => Navigation.PushAsync(new PodcastsPage(continuing: true))),

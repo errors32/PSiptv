@@ -28,6 +28,7 @@ public static class AppServices
         SessionVersion++;
         SuspendPlayback();
         FavoritesService.Clear();
+        _ = TvDiscoveryService.RefreshAsync();
     }
     public static void Lock()
     {
@@ -82,6 +83,7 @@ public sealed class AccountStore
             await ReminderService.DeleteAccountAsync(id);
             await DvrService.DeleteAccountAsync(id);
             await OfflineDownloadService.DeleteAccountAsync(id);
+            foreach (var profile in UserProfileService.Profiles) await ExperienceService.DeleteAsync(id, profile.Id);
             SecureStorage.Default.Remove($"catalog-options.{id}");
             SecureStorage.Default.Remove($"psiptv.biometric.{id}");
             foreach (var kind in Enum.GetValues<MediaKind>())
@@ -212,6 +214,8 @@ public static class DesignService
         InterfaceDesign.Library => "Biblioteca", _ => mode.ToString()
     };
     public static event Action? Changed;
+
+    public static void Refresh() => Changed?.Invoke();
 
     public static void Apply(InterfaceDesign mode)
     {

@@ -205,6 +205,7 @@ public sealed class LiveTvView : ContentView
         };
         player.MediaOpened += (_, _) =>
         {
+            if (player.ActiveMedia is { } actual) { CurrentItem = actual; channelName.Text = actual.Name; }
             message.Text = "";
             player.UseStretchToViewport();
         };
@@ -511,6 +512,7 @@ public sealed class LiveTvView : ContentView
     public Task ShowRadioAsync() => radioMode ? Task.CompletedTask : ToggleRadioModeAsync();
     public Task ShowTelevisionAsync() => radioMode ? ToggleRadioModeAsync() : Task.CompletedTask;
     public Task OpenMultiviewFromMenuAsync() => OpenMultiviewAsync();
+    public Task TogglePlaybackFromShortcutAsync() => player.TogglePlayPauseAsync();
 
     public void ApplyDesign()
     {

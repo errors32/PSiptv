@@ -21,9 +21,10 @@ public static class BackupService
             var history = await HistoryService.ExportAsync(account.Id, profile.Id);
             var reminders = await ReminderService.ExportAsync(account.Id, profile.Id);
             var seriesRules = await DvrService.ExportSeriesRulesAsync(account.Id, profile.Id);
-            if (favorites.Count > 0 || history.Count > 0 || reminders.Count > 0 || seriesRules.Count > 0)
+            var library = await ExperienceService.LoadAsync(account.Id, profile.Id);
+            if (favorites.Count > 0 || history.Count > 0 || reminders.Count > 0 || seriesRules.Count > 0 || library.Collections.Count > 0 || library.Pinned.Count > 0 || library.States.Count > 0 || library.HiddenHome.Count > 0 || !library.HomeOrder.SequenceEqual(ExperienceService.HomeSections) || library.PreferredChannels.Count > 0)
                 personal.Add(new(profile.Id, account.Id, favorites, history, reminders, seriesRules, snapshot.HeardEpisodes,
-                    snapshot.PodcastProgress, snapshot.PodcastVisits));
+                    snapshot.PodcastProgress, snapshot.PodcastVisits, library));
         }
 
         var catalogOptions = new Dictionary<string, string>();
@@ -37,7 +38,7 @@ public static class BackupService
         var document = new BackupDocument(Version, DateTimeOffset.UtcNow, accounts,
             UserProfileService.Profiles.ToArray(),
             personal, catalogOptions, ReadSettings(), BrowserSourcesService.Sources,
-            BrowserSourcesService.Default?.Id ?? "", protectedGitHubToken);
+            BrowserSourcesService.Default?.Id ?? "", protectedGitHubToken, ExperienceService.ExportOptions());
         return await Task.Run(() =>
         {
             var plain = JsonSerializer.SerializeToUtf8Bytes(document);
@@ -93,6 +94,7 @@ public static class BackupService
             await HistoryService.ImportAsync(data.AccountId, data.ProfileId, mergedHistory);
             await ReminderService.ImportAsync(data.AccountId, data.ProfileId, data.Reminders ?? []);
             await DvrService.ImportSeriesRulesAsync(data.AccountId, data.ProfileId, data.SeriesRules ?? []);
+            if (data.Library is not null) await ExperienceService.ImportAsync(data.AccountId, data.ProfileId, data.Library);
         }
         foreach (var (accountId, options) in document.CatalogOptions)
             if (accountIds.Contains(accountId))
@@ -101,6 +103,7 @@ public static class BackupService
             .GroupBy(source => source.Id).Select(group => group.Last()).ToArray();
         BrowserSourcesService.Replace(browserSources, document.DefaultBrowserSourceId);
         ApplySettings(document.Settings, accountIds);
+        ExperienceService.ImportOptions(document.ExperienceOptions);
         if (githubToken.Length > 0) await GitHubUpdateTokenStore.SaveAsync(githubToken);
         AppServices.Lock();
     }
@@ -188,13 +191,13 @@ public static class BackupService
         IReadOnlyList<PlaylistAccount> Accounts, IReadOnlyList<UserProfile> Profiles,
         IReadOnlyList<ProfileBackupData> PersonalData, IReadOnlyDictionary<string, string> CatalogOptions,
         BackupSettings Settings, IReadOnlyList<BrowserSource> BrowserSources, string DefaultBrowserSourceId,
-        string ProtectedGitHubToken = "");
+        string ProtectedGitHubToken = "", IReadOnlyDictionary<string, string>? ExperienceOptions = null);
     private sealed record ProfileBackupData(string ProfileId, string AccountId,
         IReadOnlyList<FavoriteEntry> Favorites, IReadOnlyList<WatchEntry> History,
         IReadOnlyList<ProgrammeReminder>? Reminders, IReadOnlyList<DvrSeriesRule>? SeriesRules = null,
         IReadOnlyDictionary<string, PodcastHeardEntry>? HeardEpisodes = null,
         IReadOnlyDictionary<string, PodcastPlaybackEntry>? PodcastProgress = null,
-        IReadOnlyDictionary<string, DateTimeOffset>? PodcastVisits = null);
+        IReadOnlyDictionary<string, DateTimeOffset>? PodcastVisits = null, PersonalLibrary? Library = null);
     private sealed record BackupSettings(bool Pip, string StreamFormat, bool AutoPlay, int AutoPlaySeconds,
         bool AutoClearCache, bool Subtitles, bool Clock12, string UserAgent, int BufferSeconds,
         bool NetworkSpeed, string Decoder, bool OpenSl, bool OpenGl, string Language, string Theme,

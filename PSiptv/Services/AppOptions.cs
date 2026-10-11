@@ -140,6 +140,7 @@ public static class HistoryService
             entries.Insert(0, new(item, DateTimeOffset.UtcNow, Math.Max(0, position)));
             await SecureStorage.Default.SetAsync($"watch-history.{scope}", JsonSerializer.Serialize(entries.Take(100)));
             counts[scope] = Math.Min(100, entries.Count);
+            _ = TvDiscoveryService.RefreshAsync();
         }
         finally { gate.Release(); }
     }
@@ -264,6 +265,9 @@ public static class EpgService
 
     public static async Task<IReadOnlyList<TvProgramme>> GetAsync(PlaylistAccount account, MediaItem channel, CancellationToken token, bool refresh = false)
     {
+        var config = AppServices.ActiveAccount?.Id == account.Id ? CatalogOptionsService.Current.Epg :
+            System.Text.Json.JsonSerializer.Deserialize<CatalogPreferences>(await SecureStorage.Default.GetAsync($"catalog-options.{account.Id}") ?? "{}")?.Epg ?? new();
+        if (config.Sources.Count > 0) return await GetConfiguredAsync(account, channel, config, token, refresh);
         var key = SourceKey(account, channel);
         if (IsXtreamShortGuide(account)) lock (sync) trackedXtreamChannels[key] = channel;
         var saved = await LoadAsync(account.Id, key);
@@ -277,6 +281,82 @@ public static class EpgService
         var updated = await RefreshCoreAsync(account, channel, key, token, refresh);
         token.ThrowIfCancellationRequested();
         return SelectChannel(updated.Items, account, channel);
+    }
+
+    private static async Task<IReadOnlyList<TvProgramme>> GetConfiguredAsync(PlaylistAccount account, MediaItem channel,
+        EpgConfiguration config, CancellationToken token, bool refresh)
+    {
+        var guides = await GetConfiguredSourcesAsync(account, config, token, refresh);
+        var earliest = channel.HasCatchup ? DateTimeOffset.Now.AddDays(-channel.CatchupDays) : DateTimeOffset.Now;
+        return config.Select(channel, guides).Where(p => p.End >= earliest).ToArray();
+    }
+
+    public static async Task<IReadOnlyList<TvProgramme>> GetFullGuideAsync(PlaylistAccount account,
+        IReadOnlyList<MediaItem> channels, CancellationToken token)
+    {
+        var config = (System.Text.Json.JsonSerializer.Deserialize<CatalogPreferences>(
+            await SecureStorage.Default.GetAsync($"catalog-options.{account.Id}") ?? "{}") ?? new()).Epg;
+        if (config.Sources.Count == 0) return await AppServices.Client.GetFullGuideAsync(account, token);
+        var guides = await GetConfiguredSourcesAsync(account, config, token, false);
+        return await Task.Run(() =>
+        {
+            var indexed = guides.Select(guide => guide.GroupBy(p => p.ChannelId)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<TvProgramme>)g.ToArray())).ToArray();
+            return channels.SelectMany(channel =>
+            {
+                token.ThrowIfCancellationRequested();
+                var id = channel.EpgId.Length > 0 ? channel.EpgId : channel.Id;
+                var sourceId = config.Mappings.GetValueOrDefault(CatalogPreferences.ItemKey(channel))?.ChannelId ?? channel.EpgId;
+                var selected = indexed.Select(source => source.GetValueOrDefault(sourceId) ?? []).ToArray();
+                return config.Select(channel, selected).Select(p => p with { ChannelId = id });
+            }).DistinctBy(p => (p.ChannelId, p.Title, p.Start, p.End)).ToArray();
+        }, token);
+    }
+
+    private static async Task<IReadOnlyList<IReadOnlyList<TvProgramme>>> GetConfiguredSourcesAsync(PlaylistAccount account,
+        EpgConfiguration config, CancellationToken token, bool refresh)
+    {
+        var guides = new List<IReadOnlyList<TvProgramme>>();
+        var successful = 0;
+        int generation;
+        lock (sync) generation = cacheGeneration;
+        foreach (var source in config.Sources.Take(8))
+        {
+            token.ThrowIfCancellationRequested();
+            var key = $"{account.Id}:additional-xmltv:{source.Url}";
+            var saved = await LoadAsync(account.Id, key);
+            if (refresh || saved is null || DateTimeOffset.UtcNow - saved.Updated > freshness)
+            {
+                SemaphoreSlim semaphore;
+                lock (sync) { if (!refreshGates.TryGetValue(key, out semaphore!)) refreshGates[key] = semaphore = new(1, 1); }
+                await semaphore.WaitAsync(token);
+                try
+                {
+                    saved = await LoadAsync(account.Id, key);
+                    if (refresh || saved is null || DateTimeOffset.UtcNow - saved.Updated > freshness)
+                    {
+                        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        deadline.CancelAfter(TimeSpan.FromSeconds(45));
+                        var xml = await AppServices.Client.DownloadGuideAsync(account, source.Url, deadline.Token);
+                        var programmes = await Task.Run(() => XmlTvParser.Parse(xml), deadline.Token);
+                        saved = new(DateTimeOffset.UtcNow, programmes);
+                        lock (sync)
+                        {
+                            if (generation != cacheGeneration) throw new OperationCanceledException();
+                            cache[key] = saved;
+                        }
+                        await EpgCacheService.SaveAsync(account.Id, key, saved);
+                    }
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested || generation != cacheGeneration) { throw; }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+                finally { semaphore.Release(); }
+            }
+            if (saved is not null) successful++;
+            guides.Add(saved?.Items ?? []);
+        }
+        if (successful == 0) throw new InvalidOperationException("Nenhuma fonte XMLTV respondeu e não existe guia em cache.");
+        return guides;
     }
 
     private static async Task RefreshIfStaleAsync(PlaylistAccount account, MediaItem channel)

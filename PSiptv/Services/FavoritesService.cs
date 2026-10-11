@@ -99,5 +99,6 @@ public static class FavoritesService
     {
         loadedScope = scope; entries = saved; keys = saved.Select(e => e.Key).ToHashSet();
         Changed?.Invoke();
+        if (scope is not null) _ = TvDiscoveryService.RefreshAsync();
     }
 }

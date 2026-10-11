@@ -16,6 +16,7 @@ public sealed partial class SettingsPage
                 ActionRow(FaIcons.Link, "Fontes do browser", () => Navigation.PushAsync(new BrowserSourcesPage()),
                     () => BrowserSourcesService.Default?.Name ?? "Sem fonte predefinida")),
             SettingsSection.Epg => Ui.Stack(
+                Ui.Button("Fontes adicionais, associações e horários", () => Navigation.PushAsync(new EpgSourcesPage())),
                 ActionRow(FaIcons.Calendar, "Fonte EPG", EpgAsync, () => AppServices.ActiveAccount is { } a
                     ? LanguageService.Text(a.EpgUrl.Length == 0 ? "Padrão" : "XMLTV personalizado") +
                       (EpgService.LastUpdated(a.Id) is { } t ? " · " + AppOptions.FormatTime(t) : " · " + LanguageService.Text("Ainda não atualizado"))

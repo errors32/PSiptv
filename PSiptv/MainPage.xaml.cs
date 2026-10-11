@@ -258,7 +258,17 @@ public partial class MainPage : ContentPage
     private async Task OpenGlobalSearchAsync()
     {
         if (AppServices.ActiveAccount is null) await ChooseAccountAsync();
-        if (AppServices.ActiveAccount is { } account) await Navigation.PushAsync(new GlobalSearchPage(account));
+        if (AppServices.ActiveAccount is not { } account) return;
+        var choice = await LanguageService.ActionSheetAsync(this, "Pesquisar", "Cancelar", null, "Lista ativa", "Catálogo unificado");
+        if (choice == "Lista ativa") await Navigation.PushAsync(new GlobalSearchPage(account));
+        else if (choice == "Catálogo unificado") await Navigation.PushAsync(new UnifiedCatalogPage(async (source, item) =>
+        {
+            await Navigation.PopAsync();
+            if (AppServices.ActiveAccount?.Id != source.Id) await OpenAccountAsync(source);
+            if (AppServices.ActiveAccount?.Id != source.Id || !await CatalogOptionsService.AuthorizePlaybackAsync(this, item)) return;
+            if (item.HasEpisodes) await Navigation.PushAsync(new MediaDetailsPage(source, item));
+            else await PlaybackService.PlayAsync(this, item);
+        }));
     }
 
     private async Task OpenLanRemoteAsync()
@@ -1239,6 +1249,7 @@ public partial class MainPage : ContentPage
         await home.LoadAsync(account, channels ?? [], showLoading: !AppOptions.CatalogUpdateInBackground);
         if (AppServices.ActiveAccount?.Id != account.Id || !IsHomeTab) return;
         status.Text = LanguageService.Text("Sugestões personalizadas a partir da sua atividade.");
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(120), () => FocusMemory.Restore(this));
         if (ensureChannels && !channelsLoaded) _ = LoadHomeChannelsAsync(account);
     }
 
@@ -1321,6 +1332,13 @@ public partial class MainPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
+        ShortcutService.Register(this, async command =>
+        {
+            if (command == "search") await OpenGlobalSearchAsync();
+            else if (command == "home") await SwitchAsync(MainSection.Home, false);
+            else if (command == "fullscreen") liveTv.SetFullscreen(!liveTv.IsFullscreen);
+            else if (command == "playpause") await liveTv.TogglePlaybackFromShortcutAsync();
+        });
         if (startupAttempted && IsHomeTab && AppServices.ActiveAccount is not null)
             Dispatcher.Dispatch(() => _ = LoadHomeAsync());
     }
@@ -1328,6 +1346,29 @@ public partial class MainPage : ContentPage
     internal async Task OpenPendingNotificationAsync()
     {
 #if ANDROID
+        if (AndroidTvDiscovery.Consume() is { } link)
+        {
+            var uri = Android.Net.Uri.Parse(link)!;
+            var id = uri.GetQueryParameter("account"); var profile = uri.GetQueryParameter("profile"); var itemId = uri.GetQueryParameter("item");
+            var account = (await AppServices.Accounts.LoadAsync()).FirstOrDefault(a => a.Id == id);
+            if (account is not null && UserProfileService.Profiles.Any(p => p.Id == profile))
+            {
+                if (profile != UserProfileService.Active.Id) AppServices.ActivateProfile(profile!);
+                await OpenAccountAsync(account);
+                if (AppServices.ActiveAccount?.Id == account.Id)
+                {
+                    var library = await ExperienceService.LoadAsync(account.Id);
+                    var available = CatalogOptionsService.Catalogs.Values.SelectMany(c => c).Concat(library.Pinned)
+                        .Concat((await HistoryService.LoadAsync(account.Id)).Select(e => e.Item)).Concat(FavoritesService.Items);
+                    var selected = available.FirstOrDefault(i => AndroidTvDiscovery.ItemId(i) == itemId);
+                    if (selected is not null)
+                    {
+                        var resume = (await HistoryService.LoadAsync(account.Id)).FirstOrDefault(e => CatalogPreferences.ItemKey(e.Item) == CatalogPreferences.ItemKey(selected))?.PositionSeconds ?? 0;
+                        await PlaybackService.PlayAsync(this, selected, resume: resume);
+                    }
+                }
+            }
+        }
         var destination = AndroidNotificationNavigation.Consume();
         if (destination is null) return;
         Page page = destination switch

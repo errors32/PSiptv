@@ -9,6 +9,7 @@ namespace PSiptv
 {
     [Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, ResizeableActivity = true, SupportsPictureInPicture = true, LaunchMode = LaunchMode.SingleTask, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
     [IntentFilter([Intent.ActionMain], Categories = ["android.intent.category.LEANBACK_LAUNCHER"])]
+    [IntentFilter([Intent.ActionView], Categories = [Intent.CategoryDefault, Intent.CategoryBrowsable], DataScheme = "psiptv", DataHost = "watch")]
     public class MainActivity : MauiAppCompatActivity
     {
         internal static Func<Keycode, bool>? TelevisionKeyHandler { get; set; }
@@ -18,6 +19,7 @@ namespace PSiptv
         {
             base.OnCreate(savedInstanceState);
             AndroidNotificationNavigation.Capture(Intent);
+            AndroidTvDiscovery.Capture(Intent);
             if (OperatingSystem.IsAndroidVersionAtLeast(28) && Window?.Attributes is { } attributes)
             {
                 // Allow fullscreen video to occupy the display-cutout strip.
@@ -47,6 +49,7 @@ namespace PSiptv
         {
             base.OnNewIntent(intent);
             AndroidNotificationNavigation.Capture(intent);
+            AndroidTvDiscovery.Capture(intent);
         }
         protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
         {
@@ -71,6 +74,11 @@ namespace PSiptv
         }
         public override bool DispatchKeyEvent(KeyEvent? e)
         {
+            if (e is not null && CurrentFocus is not Android.Widget.EditText)
+            {
+                var key = e.KeyCode.ToString();
+                if (e.Action == KeyEventActions.Down && e.RepeatCount == 0 && PSiptv.Services.ShortcutService.Dispatch(key)) return true;
+            }
             var handler = TelevisionKeyHandler;
             if (handler is not null && e is not null && e.KeyCode is Keycode.DpadUp or Keycode.DpadDown)
             {

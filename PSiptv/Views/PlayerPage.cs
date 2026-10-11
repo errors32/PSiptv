@@ -46,7 +46,7 @@ public sealed class PlayerPage : LocalizedPage
         player.PlaybackStopping += () => { countdown?.Cancel(); sleepTimer?.Cancel(); };
         liveChannel = !transient && item.Kind == MediaKind.Channel && !item.IsCatchup;
         Ui.Page(this, item.Name);
-        player.MediaOpened += (_, _) => { message.Text = ""; message.IsVisible = false; };
+        player.MediaOpened += (_, _) => { message.Text = ""; message.IsVisible = false; if (player.ActiveMedia is { } actual) { current = actual; mediaTitle.Text = actual.Name; favorite.BindingContext = actual; } };
         player.StatusChanged += text => { message.Text = text; message.IsVisible = text.Length > 0; };
         player.MediaFailed += (_, _) =>
         {
@@ -56,7 +56,16 @@ public sealed class PlayerPage : LocalizedPage
         };
         player.MediaEnded += async (_, _) => await NextAsync();
         mediaTitle.Text = item.Name; favorite.BindingContext = item;
-        var header = Ui.Stack(mediaTitle, favorite);
+        var manage = Ui.Button("Coleções e estado", () => Navigation.PushAsync(new ItemLibraryPage(current)));
+        manage.IsVisible = !transient && !DeviceProfile.IsAutomotive;
+        var header = Ui.Stack(mediaTitle, favorite, manage);
+        Appearing += (_, _) => ShortcutService.Register(this, async command =>
+        {
+            if (command == "fullscreen") SetFullscreen(!fullscreen);
+            else if (command == "playpause") await player.TogglePlayPauseAsync();
+            else if (command == "home") await Navigation.PopToRootAsync();
+            else if (command == "search" && AppServices.ActiveAccount is { } active) await Navigation.PushAsync(new GlobalSearchPage(active));
+        });
         favorite.IsVisible = !transient && !DeviceProfile.IsAutomotive && !item.IsCatchup;
         cancelNext = Ui.Button("Cancelar próximo episódio", () => { countdown?.Cancel(); nextMessage.Text = ""; return Task.CompletedTask; });
         cancelNext.IsVisible = false;
