@@ -51,4 +51,11 @@ public static class BluetoothRemoteService
 
     internal static void SetStatus(string value) => MainThread.BeginInvokeOnMainThread(() =>
     { Status = value; Changed?.Invoke(); });
+
+    public static void Disconnect()
+    {
+#if ANDROID
+        PSiptv.AndroidBluetoothRemote.Disconnect();
+#endif
+    }
 }

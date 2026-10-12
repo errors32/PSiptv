@@ -35,11 +35,44 @@ internal static class BluetoothRemoteTests
                 return Task.FromResult(new RemoteControlResponse(true, "",
                     new("Tablet", "Favoritos", "", 35, request.Value, [new(request.Value, "RTP 1")])));
             }, timeout.Token);
+        var legacyConnection = true;
         var response = await BluetoothRemoteProtocol.SendAsync(clientStream, clientStream, hello,
-            "channel", "rtp1", timeout.Token);
+            "channel", "rtp1", timeout.Token, peerInfo => legacyConnection = peerInfo.KeepConnection);
         await serving;
         check(received is { Token: "secret", Command: "channel", Value: "rtp1" } && receivedProfile == "profile" &&
             response.State?.CurrentChannelId == "rtp1", "Bluetooth autentica e transmite troca de canal e estado");
+
+        var currentChannel = "rtp1";
+        var executions = new List<string>();
+        async Task ServeConnectionAsync()
+        {
+            for (var exchange = 0; exchange < 4; exchange++)
+                await BluetoothRemoteProtocol.ServeAsync(serverStream, serverStream, () => peer with { KeepConnection = true },
+                    (request, _) =>
+                    {
+                        executions.Add(request.Command);
+                        if (request.Value == "blocked") throw new InvalidOperationException("Reprodução bloqueada");
+                        if (request.Command == "channel") currentChannel = request.Value;
+                        return Task.FromResult(new RemoteControlResponse(true, "",
+                            new("Tablet", "Favoritos", "", 35, currentChannel, [new(currentChannel, "Canal")])));
+                    }, timeout.Token);
+        }
+        var persistentServer = ServeConnectionAsync();
+        var persistentConnection = false;
+        var nextChannel = await BluetoothRemoteProtocol.SendAsync(clientStream, clientStream, hello, "channel", "rtp2", timeout.Token,
+            peerInfo => persistentConnection = peerInfo.KeepConnection);
+        var nextState = await BluetoothRemoteProtocol.SendAsync(clientStream, clientStream, hello, "state", "", timeout.Token);
+        var blocked = await BluetoothRemoteProtocol.SendAsync(clientStream, clientStream, hello, "channel", "blocked", timeout.Token);
+        var recovered = await BluetoothRemoteProtocol.SendAsync(clientStream, clientStream, hello, "channel", "sic", timeout.Token);
+        await persistentServer;
+        check(nextChannel.State?.CurrentChannelId == "rtp2" && nextState.State?.CurrentChannelId == "rtp2",
+            "Bluetooth muda de canal e consulta o estado na mesma ligação aberta");
+        check(!blocked.Success && recovered.State?.CurrentChannelId == "sic",
+            "Bluetooth conserva a ligação e aceita novo canal após erro de reprodução");
+        check(executions.SequenceEqual(["channel", "state", "channel", "channel"]),
+            "Bluetooth executa cada comando uma vez e preserva a ordem numa ligação persistente");
+        check(!legacyConnection && persistentConnection,
+            "Bluetooth distingue equipamentos antigos e equipamentos com ligação persistente");
 
         bool executed = false;
         using var wrongProfile = Input(hello with { ProfileKey = "other" });

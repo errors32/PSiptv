@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 
 namespace PSiptv.Core;
 
-/// <summary>One authenticated command per secure RFCOMM connection, independent of IP networking.</summary>
+/// <summary>Authenticated command exchanges that can share a secure RFCOMM connection.</summary>
 public static class BluetoothRemoteProtocol
 {
     public const string ServiceUuid = "d321875d-72bc-4374-bf59-6b8a84e88c21";
@@ -17,7 +17,8 @@ public static class BluetoothRemoteProtocol
         response.Token.Length > 0;
 
     public static async Task<RemoteControlResponse> SendAsync(Stream input, Stream output,
-        RemoteDiscoveryRequest hello, string command, string value, CancellationToken token)
+        RemoteDiscoveryRequest hello, string command, string value, CancellationToken token,
+        Action<RemoteDiscoveryResponse>? observePeer = null)
     {
         using var reader = new StreamReader(input, Encoding.UTF8, false, 4096, true);
         using var writer = new StreamWriter(output, new UTF8Encoding(false), 4096, true) { AutoFlush = true };
@@ -25,6 +26,7 @@ public static class BluetoothRemoteProtocol
         var peer = await ReadAsync<RemoteDiscoveryResponse>(reader, 64 * 1024, token);
         if (!Matches(hello, peer))
             throw new IOException("Abra a mesma lista e o mesmo perfil nos dois equipamentos.");
+        observePeer?.Invoke(peer);
         await WriteAsync(writer, new RemoteControlRequest(peer.Token, command, value), token);
         return await ReadAsync<RemoteControlResponse>(reader, 2 * 1024 * 1024, token);
     }

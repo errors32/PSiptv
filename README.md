@@ -10,6 +10,8 @@ No telemóvel, escolha **Bluetooth** em **Ligação**, selecione o tablet/TV e t
 
 As aplicações devem permanecer abertas e os equipamentos dentro do alcance Bluetooth. A TV deve suportar ligações Bluetooth Classic RFCOMM entre aplicações. O vídeo continua a ser obtido pela ligação à Internet do tablet/TV; Bluetooth transporta os comandos e o estado da reprodução.
 
+A partir da 1.6.5, atualize ambos os equipamentos para manter uma ligação Bluetooth entre as consultas e os comandos. Recetores anteriores continuam a usar uma ligação por pedido. Fechar o comando remoto ou trocar de equipamento encerra a ligação; consultas de estado podem reconectar após falha, sem repetir automaticamente comandos de reprodução.
+
 ## Podcasts e favoritos na rede local
 
 O botão **Podcasts**, junto ao seletor de TV/Rádios, abre a pesquisa no diretório iTunes e os episódios dos feeds RSS. Use a estrela para guardar um podcast ou um episódio no perfil ativo. Em **Configurações → Podcasts favoritos e ouvidos** pode consultar os favoritos e, dentro de cada podcast, filtrar episódios **Por ouvir** ou **Ouvidos**, ou alterar esse estado manualmente. O leitor integrado marca o episódio como ouvido quando chega ao fim; leitores externos não comunicam a conclusão à aplicação. O estado só é conservado enquanto o podcast ou o episódio estiver nos favoritos e acompanha as cópias de segurança.

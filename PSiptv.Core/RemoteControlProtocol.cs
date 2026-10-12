@@ -13,7 +13,7 @@ public sealed record RemoteDiscoveryRequest(string Magic, int Version, string Pr
     string DeviceId = "", string LeaderDeviceId = "", long LeaderEpoch = 0);
 public sealed record RemoteDiscoveryResponse(string Magic, int Version, string DeviceName, int Port, string Token,
     string DeviceId = "", string ProfileKey = "", string ProfileName = "", bool IsActive = true,
-    string LeaderDeviceId = "", long LeaderEpoch = 0);
+    string LeaderDeviceId = "", long LeaderEpoch = 0, bool KeepConnection = false);
 public sealed record RemoteControlRequest(string Token, string Command, string Value = "");
 public sealed record RemoteChannel(string Id, string Name);
 public sealed record RemoteControlState(string DeviceName, string ActiveTab, string Category,

@@ -1,5 +1,12 @@
 # Validação
 
+## Novidades da 1.6.5
+
+- Atualize ambos os equipamentos. Selecione e ative o tablet/TV no comando Bluetooth; aguarde várias consultas de estado e confirme que o Android não apresenta ciclos de ligação/desligação.
+- Troque repetidamente de canal e ajuste volume, incluindo um canal lento a iniciar. Confirme que consultas de estado não desativam os controlos durante o comando e que cada ação é executada uma vez.
+- Recuse uma autorização de reprodução ou escolha um canal indisponível; confirme que outro canal continua a funcionar na mesma ligação. Interrompa Bluetooth e confirme reconexão nas consultas de estado.
+- Troque de equipamento, feche a página e coloque cada aplicação em segundo plano; confirme encerramento das ligações e recuperação ao reabrir. Confirme também funcionamento com um recetor antigo, que mantém uma ligação por pedido.
+
 ## Novidades da 1.6.4
 
 - Em **Comando remoto → Bluetooth → Procurar novamente**, confirme que todos os equipamentos emparelhados aparecem, incluindo acessórios e equipamentos com a aplicação fechada. A listagem não depende de uma consulta prévia ao equipamento nem da lista/perfil aberto.

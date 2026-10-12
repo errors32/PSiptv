@@ -26,6 +26,7 @@ public sealed class LanRemotePage : LocalizedPage
     private CancellationTokenSource? lifetime;
     private LanRemoteDevice? selectedDevice;
     private bool applyingState;
+    private bool commandInProgress;
     private bool refreshing;
     private bool discoveryPending;
     private readonly ObservableCollection<RemoteChannel> displayedChannels = [];
@@ -40,6 +41,7 @@ public sealed class LanRemotePage : LocalizedPage
         transportPicker.IsVisible = BluetoothRemoteService.Supported;
         transportPicker.SelectedIndexChanged += async (_, _) =>
         {
+            BluetoothRemoteService.Disconnect();
             selectedDevice = null;
             devices.Clear();
             devicePicker.ItemsSource = null;
@@ -62,7 +64,7 @@ public sealed class LanRemotePage : LocalizedPage
             if (refreshing) return;
             if (devicePicker.SelectedIndex < 0 || devicePicker.SelectedIndex >= devices.Count) return;
             var device = devices[devicePicker.SelectedIndex];
-            if (selectedDevice != device) ClearRemoteState();
+            if (selectedDevice != device) { BluetoothRemoteService.Disconnect(); ClearRemoteState(); }
             selectedDevice = device;
             await RefreshStateAsync();
         };
@@ -186,6 +188,7 @@ public sealed class LanRemotePage : LocalizedPage
         lifetime?.Cancel();
         lifetime?.Dispose();
         lifetime = null;
+        BluetoothRemoteService.Disconnect();
         base.OnDisappearing();
     }
 
@@ -246,16 +249,16 @@ public sealed class LanRemotePage : LocalizedPage
 
     private async Task RefreshStateAsync()
     {
-        if (selectedDevice is not { } device || lifetime?.IsCancellationRequested != false) return;
+        if (commandInProgress || selectedDevice is not { } device || lifetime?.IsCancellationRequested != false) return;
         try
         {
             var state = await client.SendAsync(device, "state", "", lifetime.Token);
-            if (selectedDevice == device && lifetime?.IsCancellationRequested == false) ApplyState(state);
+            if (!commandInProgress && selectedDevice == device && lifetime?.IsCancellationRequested == false) ApplyState(state);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            if (selectedDevice != device) return;
+            if (commandInProgress || selectedDevice != device) return;
             status.Text = ex.Message;
             // Preserve the list and its scroll position while the next poll retries the connection.
             controls.IsEnabled = false;
@@ -265,7 +268,8 @@ public sealed class LanRemotePage : LocalizedPage
 
     private async Task SendAsync(string command, string value)
     {
-        if (selectedDevice is not { } device || lifetime?.IsCancellationRequested != false) return;
+        if (commandInProgress || selectedDevice is not { } device || lifetime?.IsCancellationRequested != false) return;
+        commandInProgress = true;
         try
         {
             var state = await client.SendAsync(device, command, value, lifetime.Token);
@@ -273,11 +277,13 @@ public sealed class LanRemotePage : LocalizedPage
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { status.Text = ex.Message; }
+        finally { commandInProgress = false; }
     }
 
     private async Task ActivateRemoteAsync()
     {
-        if (selectedDevice is not { } device) return;
+        if (commandInProgress || selectedDevice is not { } device) return;
+        commandInProgress = true;
         try
         {
             var state = await client.SendAsync(device, "activate", "", lifetime?.Token ?? CancellationToken.None);
@@ -285,9 +291,9 @@ public sealed class LanRemotePage : LocalizedPage
             RemoteControlService.ObserveLeader(state.LeaderDeviceId, state.LeaderEpoch);
             ApplyState(state);
             status.Text = $"{state.DeviceName} é agora o dispositivo ativo.";
-            await DiscoverAsync();
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { status.Text = ex.Message; }
+        finally { commandInProgress = false; }
     }
 
     private Task ActivateHereAsync()
