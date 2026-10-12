@@ -9,10 +9,11 @@ public sealed class LanRemotePage : LocalizedPage
 {
     private readonly LanRemoteClient client = new();
     private readonly List<LanRemoteDevice> devices = [];
-    private readonly Label status = Ui.Text("A procurar dispositivos no Wi-Fi…", 14, true);
+    private readonly Label status = Ui.Text("A procurar dispositivos com o perfil ativo…", 14, true);
     private readonly Label nowPlaying = Ui.Text("", 16);
     private readonly Picker devicePicker = new() { Title = "Dispositivo" };
-    private readonly Picker transportPicker = new() { Title = "Ligação", ItemsSource = new[] { "Wi-Fi", "Bluetooth" }, SelectedIndex = 0 };
+    private readonly Picker transportPicker = new() { Title = "Ligação", ItemsSource = new[] { "Wi-Fi", "Bluetooth" },
+        SelectedIndex = BluetoothRemoteService.Supported ? 1 : 0 };
     private readonly Switch bluetoothEnabled = new() { IsToggled = BluetoothRemoteService.Enabled };
     private readonly Label bluetoothStatus = Ui.Text("", 13, true);
     private bool updatingBluetooth;
@@ -177,6 +178,15 @@ public sealed class LanRemotePage : LocalizedPage
         RemoteControlService.ActiveDeviceChanged += OnActiveDeviceChanged;
         BluetoothRemoteService.Changed += RefreshBluetoothStatus;
         RefreshBluetoothStatus();
+        if (BluetoothRemoteService.Supported && BluetoothRemoteService.Enabled)
+        {
+            try { await BluetoothRemoteService.SetEnabledAsync(true); }
+            catch (Exception ex) { status.Text = ex.Message; }
+            if (cancellationToken.IsCancellationRequested) return;
+            updatingBluetooth = true;
+            bluetoothEnabled.IsToggled = BluetoothRemoteService.Enabled;
+            updatingBluetooth = false;
+        }
         await DiscoverAsync();
         if (!cancellationToken.IsCancellationRequested) _ = PollAsync(cancellationToken);
     }

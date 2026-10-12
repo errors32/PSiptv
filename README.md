@@ -4,6 +4,8 @@ Leitor IPTV em português, desenvolvido em .NET 10 / MAUI. Não inclui listas ne
 
 ## Comando remoto por Bluetooth (Android)
 
+Desde a 1.6.6, o comando remoto inicia em Bluetooth no Android. O controlo Bluetooth fica ativo por defeito quando ainda não existe uma preferência guardada; uma opção anterior de desligar é respeitada. Ao abrir o comando, autorize o acesso a dispositivos próximos quando solicitado. Pode escolher Wi-Fi no seletor de ligação.
+
 O telemóvel pode mudar os canais favoritos e ajustar o volume no tablet ou numa Android TV através de Bluetooth, mesmo que estejam em redes Wi-Fi diferentes. Instale esta versão da PSiptv nos dois equipamentos, emparelhe-os nas definições Bluetooth do Android, abra a mesma lista com o mesmo nome de perfil e ative **Permitir controlo por Bluetooth** no ecrã **Comando remoto** em ambos.
 
 No telemóvel, escolha **Bluetooth** em **Ligação**, selecione o tablet/TV e toque em **Ativar dispositivo selecionado** se necessário. Escolha um canal favorito para o reproduzir no equipamento selecionado. **Procurar novamente** mostra todos os equipamentos emparelhados no Android, sem exigir uma resposta prévia da PSiptv. Escolha o tablet/TV pretendido; acessórios sem PSiptv ou aplicações fechadas não respondem aos comandos. O modo **Wi-Fi** continua disponível. As consultas de estado preservam a posição da lista de canais, incluindo durante falhas temporárias da ligação.

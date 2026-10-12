@@ -6,7 +6,7 @@ public static class BluetoothRemoteService
 {
     private const string EnabledKey = "remote.bluetooth.enabled.v1";
     public static bool Supported => DeviceInfo.Platform == DevicePlatform.Android;
-    public static bool Enabled => Preferences.Default.Get(EnabledKey, false);
+    public static bool Enabled => Preferences.Default.Get(EnabledKey, Supported);
     public static string Status { get; private set; } = "";
     public static event Action? Changed;
 
@@ -14,7 +14,12 @@ public static class BluetoothRemoteService
     {
 #if ANDROID
         if (enabled && !await PSiptv.AndroidBluetoothSync.RequestPermissionAsync())
-        { SetStatus("Autorize o acesso a dispositivos próximos para controlar por Bluetooth."); return false; }
+        {
+            Preferences.Default.Set(EnabledKey, false);
+            PSiptv.AndroidBluetoothRemote.Stop();
+            SetStatus("Autorize o acesso a dispositivos próximos para controlar por Bluetooth.");
+            return false;
+        }
         Preferences.Default.Set(EnabledKey, enabled);
         if (enabled) PSiptv.AndroidBluetoothRemote.Start();
         else { PSiptv.AndroidBluetoothRemote.Stop(); SetStatus("Controlo Bluetooth desligado."); }
