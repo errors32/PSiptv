@@ -73,8 +73,9 @@ public partial class MainPage : ContentPage
         topBar.Add(castButton, 1);
         topBar.Add(remoteButton, 2);
         topBar.Add(IconButton("nav_search.png", "Pesquisa global", OpenGlobalSearchAsync), 3);
-        topBar.Add(IconButton("nav_settings.png", "Configurações",
-            () => Navigation.PushAsync(new ProfilePage(ChooseAccountAsync, SwitchUserProfileAsync))), 4);
+        var settingsButton = IconButton("nav_settings.png", "Configurações",
+            () => Navigation.PushAsync(new ProfilePage(ChooseAccountAsync, SwitchUserProfileAsync)));
+        topBar.Add(settingsButton, 4);
         var menuButton = IconButton(Ui.FontIconSource(FaIcons.List, 21), "Abrir menu", () =>
         {
             OpenCleanMenu();
@@ -164,6 +165,7 @@ public partial class MainPage : ContentPage
             menuButton.IsVisible = clean;
             castButton.IsVisible = !clean;
             remoteButton.IsVisible = !clean;
+            settingsButton.IsVisible = !clean;
             if (!clean) cleanMenu.IsVisible = false;
             Ui.ApplyMediaListDesign(items);
             liveTv.ApplyDesign();
