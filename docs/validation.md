@@ -7,6 +7,8 @@
 - Desligue o Bluetooth, revogue a permissão de dispositivos próximos, afaste os equipamentos e coloque cada aplicação em segundo plano. Confirme erros, cancelamento e recuperação ao reabrir/reativar.
 - Alterne rapidamente entre Wi-Fi/Bluetooth e equipamentos, feche a página durante uma consulta e mantenha o comando aberto durante mais de 15 segundos em Wi-Fi diferentes. Confirme que respostas antigas não substituem o equipamento selecionado e que o tablet/TV permanece ativo.
 - Confirme que a sincronização Bluetooth de favoritos/podcasts e o comando Wi-Fi continuam a funcionar.
+- No comando remoto, percorra a lista e aguarde várias consultas automáticas. Altere o volume/canal no tablet e os favoritos; confirme que a posição não volta ao topo. Interrompa e restabeleça temporariamente o Bluetooth e confirme que os canais continuam visíveis durante a reconexão.
+- Emparelhe também auscultadores e um equipamento com a PSiptv fechada. Em **Procurar novamente**, confirme que só aparecem aplicações abertas com controlo Bluetooth ativo e a mesma lista/perfil, e que fechar a página cancela a procura.
 
 O protocolo do comando Bluetooth tem 11 novas verificações automatizadas. O rádio Bluetooth e os controlos de reprodução requerem validação física num tablet e numa Android TV com suporte a RFCOMM.
 

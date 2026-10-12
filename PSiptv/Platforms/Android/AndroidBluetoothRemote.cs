@@ -104,6 +104,18 @@ internal static class AndroidBluetoothRemote
     internal static async Task<RemoteControlState> SendAsync(string address, string command, string value,
         CancellationToken token)
     {
+        await ClientGate.WaitAsync(token);
+        try { return await SendCoreAsync(address, command, value, token); }
+        finally { ClientGate.Release(); }
+    }
+
+    // Discovery probes distinct peers concurrently, without delaying playback commands behind accessories.
+    internal static Task<RemoteControlState> ProbeAsync(string address, CancellationToken token) =>
+        SendCoreAsync(address, "state", "", token);
+
+    private static async Task<RemoteControlState> SendCoreAsync(string address, string command, string value,
+        CancellationToken token)
+    {
         Start();
         if (!BluetoothRemoteService.Enabled || !HasPermission || Adapter?.IsEnabled != true)
             throw new InvalidOperationException("Ative o controlo Bluetooth na aplicação e o Bluetooth no Android.");
@@ -111,35 +123,30 @@ internal static class AndroidBluetoothRemote
         lock (Sync) receiverToken = lifetime?.Token ?? throw new InvalidOperationException("Mantenha a aplicação aberta para controlar por Bluetooth.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token, receiverToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
-        await ClientGate.WaitAsync(timeout.Token);
+        var key = RemoteControlService.CurrentProfileKey;
+        var session = AppServices.SessionVersion;
+        if (key.Length == 0) throw new InvalidOperationException("Abra uma lista antes de usar o comando remoto.");
+        using var device = Adapter!.GetRemoteDevice(address);
+        if (device?.BondState != Bond.Bonded)
+            throw new InvalidOperationException("Emparelhe os equipamentos nas definições Bluetooth do Android.");
+        using var socket = device.CreateRfcommSocketToServiceRecord(ServiceId)
+            ?? throw new IOException("O dispositivo não suporta esta ligação Bluetooth.");
+        using var cancellation = timeout.Token.Register(() => Close(socket));
         try
         {
-            var key = RemoteControlService.CurrentProfileKey;
-            var session = AppServices.SessionVersion;
-            if (key.Length == 0) throw new InvalidOperationException("Abra uma lista antes de usar o comando remoto.");
-            using var device = Adapter!.GetRemoteDevice(address);
-            if (device?.BondState != Bond.Bonded)
-                throw new InvalidOperationException("Emparelhe os equipamentos nas definições Bluetooth do Android.");
-            using var socket = device.CreateRfcommSocketToServiceRecord(ServiceId)
-                ?? throw new IOException("O dispositivo não suporta esta ligação Bluetooth.");
-            using var cancellation = timeout.Token.Register(() => Close(socket));
-            try
-            {
-                await Task.Run(socket.Connect, timeout.Token);
-                if (key != RemoteControlService.CurrentProfileKey || session != AppServices.SessionVersion)
-                    throw new IOException("O perfil mudou.");
-                var reply = await BluetoothRemoteProtocol.SendAsync(socket.InputStream!, socket.OutputStream!,
-                    new(RemoteControlProtocol.Magic, RemoteControlProtocol.Version, key, RemoteControlService.DeviceId),
-                    command, value, timeout.Token);
-                if (key != RemoteControlService.CurrentProfileKey || session != AppServices.SessionVersion)
-                    throw new IOException("O perfil mudou.");
-                if (!reply.Success || reply.State is null) throw new IOException(reply.Error);
-                return reply.State;
-            }
-            catch (Exception ex) when (timeout.IsCancellationRequested && !token.IsCancellationRequested)
-            { throw new IOException("A ligação Bluetooth expirou. Confirme que a aplicação está aberta e o controlo Bluetooth está ativo no outro equipamento.", ex); }
+            await Task.Run(socket.Connect, timeout.Token);
+            if (key != RemoteControlService.CurrentProfileKey || session != AppServices.SessionVersion)
+                throw new IOException("O perfil mudou.");
+            var reply = await BluetoothRemoteProtocol.SendAsync(socket.InputStream!, socket.OutputStream!,
+                new(RemoteControlProtocol.Magic, RemoteControlProtocol.Version, key, RemoteControlService.DeviceId),
+                command, value, timeout.Token);
+            if (key != RemoteControlService.CurrentProfileKey || session != AppServices.SessionVersion)
+                throw new IOException("O perfil mudou.");
+            if (!reply.Success || reply.State is null) throw new IOException(reply.Error);
+            return reply.State;
         }
-        finally { ClientGate.Release(); }
+        catch (Exception ex) when (timeout.IsCancellationRequested && !token.IsCancellationRequested)
+        { throw new IOException("A ligação Bluetooth expirou. Confirme que a aplicação está aberta e o controlo Bluetooth está ativo no outro equipamento.", ex); }
     }
 
     private static void Close(BluetoothSocket socket)

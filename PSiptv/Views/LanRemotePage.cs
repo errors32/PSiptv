@@ -1,5 +1,6 @@
 using PSiptv.Core;
 using PSiptv.Services;
+using System.Collections.ObjectModel;
 
 namespace PSiptv.Views;
 
@@ -27,7 +28,7 @@ public sealed class LanRemotePage : LocalizedPage
     private bool applyingState;
     private bool refreshing;
     private bool discoveryPending;
-    private IReadOnlyList<RemoteChannel> displayedChannels = [];
+    private readonly ObservableCollection<RemoteChannel> displayedChannels = [];
 
     public LanRemotePage()
     {
@@ -60,7 +61,9 @@ public sealed class LanRemotePage : LocalizedPage
         {
             if (refreshing) return;
             if (devicePicker.SelectedIndex < 0 || devicePicker.SelectedIndex >= devices.Count) return;
-            selectedDevice = devices[devicePicker.SelectedIndex];
+            var device = devices[devicePicker.SelectedIndex];
+            if (selectedDevice != device) ClearRemoteState();
+            selectedDevice = device;
             await RefreshStateAsync();
         };
 
@@ -72,6 +75,8 @@ public sealed class LanRemotePage : LocalizedPage
 
         channels = new CollectionView
         {
+            ItemsSource = displayedChannels,
+            ItemsUpdatingScrollMode = ItemsUpdatingScrollMode.KeepScrollOffset,
             SelectionMode = SelectionMode.Single,
             EmptyView = Ui.Text("O dispositivo ativo ainda não tem canais favoritos.", 14, true),
             ItemTemplate = new DataTemplate(() =>
@@ -208,7 +213,7 @@ public sealed class LanRemotePage : LocalizedPage
         {
             var bluetooth = UsingBluetooth;
             var previousId = selectedDevice?.DeviceId;
-            var found = bluetooth ? BluetoothRemoteService.PairedDevices() :
+            var found = bluetooth ? await BluetoothRemoteService.DiscoverAsync(lifetime.Token) :
                 await client.DiscoverAsync(RemoteControlService.CurrentProfileKey, lifetime.Token);
             if (bluetooth != UsingBluetooth || lifetime?.IsCancellationRequested != false) return;
             devices.Clear(); devices.AddRange(found);
@@ -219,9 +224,9 @@ public sealed class LanRemotePage : LocalizedPage
             selectedDevice = index < 0 ? null : devices[index];
             devicePicker.SelectedIndex = index;
             status.Text = devices.Count == 0
-                ? (bluetooth ? "Ative o controlo Bluetooth e emparelhe os equipamentos nas definições do Android." :
+                ? (bluetooth ? "Nenhuma aplicação PSiptv disponível por Bluetooth. Emparelhe os equipamentos, ative o controlo Bluetooth e abra a mesma lista e perfil em ambos." :
                     "Nenhum outro dispositivo com este perfil foi encontrado. Confirme que ambos estão no mesmo Wi-Fi.")
-                : bluetooth ? "Escolha o tablet ou a Android TV emparelhados com a aplicação aberta e o controlo Bluetooth ativo." :
+                : bluetooth ? "Escolha um equipamento com a PSiptv aberta e o controlo Bluetooth ativo." :
                     $"{devices.Count} dispositivo(s) encontrado(s) · Perfil {UserProfileService.Active.Name}";
             if (selectedDevice is not null) await RefreshStateAsync();
             else ClearRemoteState();
@@ -248,7 +253,14 @@ public sealed class LanRemotePage : LocalizedPage
             if (selectedDevice == device && lifetime?.IsCancellationRequested == false) ApplyState(state);
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { if (selectedDevice == device) { status.Text = ex.Message; ClearRemoteState(); } }
+        catch (Exception ex)
+        {
+            if (selectedDevice != device) return;
+            status.Text = ex.Message;
+            // Preserve the list and its scroll position while the next poll retries the connection.
+            controls.IsEnabled = false;
+            activateRemote.IsEnabled = false;
+        }
     }
 
     private async Task SendAsync(string command, string value)
@@ -295,11 +307,7 @@ public sealed class LanRemotePage : LocalizedPage
         applyingState = true;
         volume.Value = Math.Clamp(state.Volume, 0, 100);
         applyingState = false;
-        if (!SameChannels(displayedChannels, state.Channels))
-        {
-            displayedChannels = state.Channels.ToArray();
-            channels.ItemsSource = displayedChannels;
-        }
+        RemoteChannelList.Update(displayedChannels, state.Channels);
         controls.IsEnabled = state.IsActive;
         activateRemote.IsEnabled = !state.IsActive;
         RefreshActiveButtons();
@@ -308,8 +316,7 @@ public sealed class LanRemotePage : LocalizedPage
     private void ClearRemoteState()
     {
         nowPlaying.Text = "";
-        displayedChannels = [];
-        channels.ItemsSource = null;
+        displayedChannels.Clear();
         controls.IsEnabled = false;
         activateRemote.IsEnabled = false;
         RefreshActiveButtons();
@@ -332,12 +339,4 @@ public sealed class LanRemotePage : LocalizedPage
         ? $"{device.Name} · {address[^Math.Min(5, address.Length)..]} · Bluetooth"
         : device.IsActive ? $"● {device.Name} (ativo)" : device.Name;
 
-    private static bool SameChannels(IReadOnlyList<RemoteChannel> current, IReadOnlyList<RemoteChannel> updated)
-    {
-        if (current.Count != updated.Count) return false;
-        for (var index = 0; index < current.Count; index++)
-            if (current[index].Id != updated[index].Id || current[index].Name != updated[index].Name)
-                return false;
-        return true;
-    }
 }

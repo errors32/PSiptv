@@ -6,7 +6,7 @@ Leitor IPTV em português, desenvolvido em .NET 10 / MAUI. Não inclui listas ne
 
 O telemóvel pode mudar os canais favoritos e ajustar o volume no tablet ou numa Android TV através de Bluetooth, mesmo que estejam em redes Wi-Fi diferentes. Instale esta versão da PSiptv nos dois equipamentos, emparelhe-os nas definições Bluetooth do Android, abra a mesma lista com o mesmo nome de perfil e ative **Permitir controlo por Bluetooth** no ecrã **Comando remoto** em ambos.
 
-No telemóvel, escolha **Bluetooth** em **Ligação**, selecione o tablet/TV e toque em **Ativar dispositivo selecionado** se necessário. Escolha um canal favorito para o reproduzir no equipamento selecionado. **Procurar novamente** atualiza a lista de equipamentos emparelhados; acessórios sem PSiptv não respondem aos comandos. O modo **Wi-Fi** continua disponível.
+No telemóvel, escolha **Bluetooth** em **Ligação**, selecione o tablet/TV e toque em **Ativar dispositivo selecionado** se necessário. Escolha um canal favorito para o reproduzir no equipamento selecionado. **Procurar novamente** consulta os equipamentos emparelhados e mostra apenas os que respondem com a PSiptv aberta, controlo Bluetooth ativo e a mesma lista/perfil. O modo **Wi-Fi** continua disponível. As consultas de estado preservam a posição da lista de canais, incluindo durante falhas temporárias da ligação.
 
 As aplicações devem permanecer abertas e os equipamentos dentro do alcance Bluetooth. A TV deve suportar ligações Bluetooth Classic RFCOMM entre aplicações. O vídeo continua a ser obtido pela ligação à Internet do tablet/TV; Bluetooth transporta os comandos e o estado da reprodução.
 

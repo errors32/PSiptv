@@ -25,15 +25,23 @@ public static class BluetoothRemoteService
 #endif
     }
 
-    public static IReadOnlyList<LanRemoteDevice> PairedDevices()
+    public static async Task<IReadOnlyList<LanRemoteDevice>> DiscoverAsync(CancellationToken token)
     {
 #if ANDROID
         if (!Enabled) return [];
+        var profile = RemoteControlService.CurrentProfileKey;
+        var session = AppServices.SessionVersion;
+        if (profile.Length == 0) return [];
         PSiptv.AndroidBluetoothRemote.Start();
-        return PSiptv.AndroidBluetoothSync.PairedDevices().Select(device => new LanRemoteDevice(
-            device.Name, System.Net.IPAddress.None, 0, "", device.Address, "", false, "", 0,
-            device.Address)).ToArray();
+        var found = await BluetoothRemoteDiscovery.DiscoverAsync(
+            PSiptv.AndroidBluetoothSync.PairedDevices().Select(device => device.Address),
+            PSiptv.AndroidBluetoothRemote.ProbeAsync, token);
+        if (profile != RemoteControlService.CurrentProfileKey || session != AppServices.SessionVersion || !Enabled) return [];
+        return found.Select(peer => new LanRemoteDevice(peer.State.DeviceName, System.Net.IPAddress.None, 0, "",
+            peer.State.DeviceId, peer.State.ProfileName, peer.State.IsActive, peer.State.LeaderDeviceId,
+            peer.State.LeaderEpoch, peer.Address)).ToArray();
 #else
+        await Task.CompletedTask;
         return [];
 #endif
     }
