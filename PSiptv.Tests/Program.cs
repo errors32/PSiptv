@@ -760,7 +760,6 @@ Check(options.IsLocked(new("episode1", "Episode", "Drama", MediaKind.Series, "ht
 ExperienceTests.Run(Check);
 await BluetoothRemoteTests.RunAsync(Check);
 RemoteChannelListTests.Run(Check);
-await BluetoothRemoteDiscoveryTests.RunAsync(Check);
 Console.WriteLine($"\n{passed} verificações concluídas.");
 await RegressionTests.RunAsync();
 }

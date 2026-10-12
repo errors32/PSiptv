@@ -86,8 +86,6 @@ public static class LanguageService
         ["Sincronização por Bluetooth"] = "Bluetooth synchronization",
         ["Comando remoto por Wi-Fi ou Bluetooth"] = "Remote control over Wi-Fi or Bluetooth",
         ["Permitir controlo por Bluetooth"] = "Allow Bluetooth remote control",
-        ["Nenhuma aplicação PSiptv disponível por Bluetooth. Emparelhe os equipamentos, ative o controlo Bluetooth e abra a mesma lista e perfil em ambos."] = "No PSiptv app available over Bluetooth. Pair the devices, enable Bluetooth remote control and open the same playlist and profile on both.",
-        ["Escolha um equipamento com a PSiptv aberta e o controlo Bluetooth ativo."] = "Choose a device with PSiptv open and Bluetooth remote control enabled.",
         ["Ajuda"] = "Help",
         ["Emparelhe os equipamentos nas definições Bluetooth do Android. Ative esta opção em ambos e mantenha as aplicações abertas com a mesma lista e perfil. Pode usar redes Wi-Fi diferentes."] = "Pair the devices in Android Bluetooth settings. Enable this option on both and keep both apps open with the same playlist and profile. Different Wi-Fi networks are supported.",
         ["Controlo Bluetooth desligado."] = "Bluetooth remote control is disabled.",

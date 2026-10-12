@@ -109,10 +109,6 @@ internal static class AndroidBluetoothRemote
         finally { ClientGate.Release(); }
     }
 
-    // Discovery probes distinct peers concurrently, without delaying playback commands behind accessories.
-    internal static Task<RemoteControlState> ProbeAsync(string address, CancellationToken token) =>
-        SendCoreAsync(address, "state", "", token);
-
     private static async Task<RemoteControlState> SendCoreAsync(string address, string command, string value,
         CancellationToken token)
     {

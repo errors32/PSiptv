@@ -1,5 +1,11 @@
 # Validação
 
+## Novidades da 1.6.4
+
+- Em **Comando remoto → Bluetooth → Procurar novamente**, confirme que todos os equipamentos emparelhados aparecem, incluindo acessórios e equipamentos com a aplicação fechada. A listagem não depende de uma consulta prévia ao equipamento nem da lista/perfil aberto.
+- Escolha manualmente o tablet/TV com controlo Bluetooth ativo e a mesma lista/perfil; confirme estado, ativação, volume e troca de canal. Um acessório sem PSiptv deve mostrar erro de ligação sem bloquear o ecrã.
+- Percorra os canais e aguarde as consultas periódicas; confirme que a posição se mantém e que uma falha temporária conserva os canais. Os cinco testes de atualização incremental da lista mantêm-se.
+
 ## Novidades da 1.6.2
 
 - Emparelhe telemóvel e tablet/Android TV no Android, abra a mesma lista/perfil e ative o controlo Bluetooth em ambos. Use redes Wi-Fi diferentes e confirme ativação do tablet/TV, mudança dos canais favoritos e volume.
@@ -8,7 +14,7 @@
 - Alterne rapidamente entre Wi-Fi/Bluetooth e equipamentos, feche a página durante uma consulta e mantenha o comando aberto durante mais de 15 segundos em Wi-Fi diferentes. Confirme que respostas antigas não substituem o equipamento selecionado e que o tablet/TV permanece ativo.
 - Confirme que a sincronização Bluetooth de favoritos/podcasts e o comando Wi-Fi continuam a funcionar.
 - No comando remoto, percorra a lista e aguarde várias consultas automáticas. Altere o volume/canal no tablet e os favoritos; confirme que a posição não volta ao topo. Interrompa e restabeleça temporariamente o Bluetooth e confirme que os canais continuam visíveis durante a reconexão.
-- Emparelhe também auscultadores e um equipamento com a PSiptv fechada. Em **Procurar novamente**, confirme que só aparecem aplicações abertas com controlo Bluetooth ativo e a mesma lista/perfil, e que fechar a página cancela a procura.
+- Emparelhe também auscultadores e um equipamento com a PSiptv fechada. Em **Procurar novamente**, confirme que todos os equipamentos emparelhados aparecem; selecione o tablet/TV manualmente. Confirme que acessórios sem PSiptv apresentam erro de ligação e que fechar a página cancela a consulta em curso.
 
 O protocolo do comando Bluetooth tem 11 novas verificações automatizadas. O rádio Bluetooth e os controlos de reprodução requerem validação física num tablet e numa Android TV com suporte a RFCOMM.
 

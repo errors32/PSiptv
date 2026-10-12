@@ -213,7 +213,7 @@ public sealed class LanRemotePage : LocalizedPage
         {
             var bluetooth = UsingBluetooth;
             var previousId = selectedDevice?.DeviceId;
-            var found = bluetooth ? await BluetoothRemoteService.DiscoverAsync(lifetime.Token) :
+            var found = bluetooth ? BluetoothRemoteService.PairedDevices() :
                 await client.DiscoverAsync(RemoteControlService.CurrentProfileKey, lifetime.Token);
             if (bluetooth != UsingBluetooth || lifetime?.IsCancellationRequested != false) return;
             devices.Clear(); devices.AddRange(found);
@@ -224,9 +224,9 @@ public sealed class LanRemotePage : LocalizedPage
             selectedDevice = index < 0 ? null : devices[index];
             devicePicker.SelectedIndex = index;
             status.Text = devices.Count == 0
-                ? (bluetooth ? "Nenhuma aplicação PSiptv disponível por Bluetooth. Emparelhe os equipamentos, ative o controlo Bluetooth e abra a mesma lista e perfil em ambos." :
+                ? (bluetooth ? "Ative o controlo Bluetooth e emparelhe os equipamentos nas definições do Android." :
                     "Nenhum outro dispositivo com este perfil foi encontrado. Confirme que ambos estão no mesmo Wi-Fi.")
-                : bluetooth ? "Escolha um equipamento com a PSiptv aberta e o controlo Bluetooth ativo." :
+                : bluetooth ? "Escolha o tablet ou a Android TV emparelhados com a aplicação aberta e o controlo Bluetooth ativo." :
                     $"{devices.Count} dispositivo(s) encontrado(s) · Perfil {UserProfileService.Active.Name}";
             if (selectedDevice is not null) await RefreshStateAsync();
             else ClearRemoteState();
