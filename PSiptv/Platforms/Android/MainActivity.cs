@@ -36,6 +36,7 @@ namespace PSiptv
         protected override void OnPause()
         {
             AndroidBluetoothSync.Pause();
+            AndroidBluetoothRemote.Pause();
             if (PSiptv.Services.DeviceProfile.IsAutomotive) PSiptv.Services.AppServices.SuspendPlayback();
             base.OnPause();
         }
@@ -43,6 +44,7 @@ namespace PSiptv
         {
             base.OnResume();
             AndroidBluetoothSync.Resume();
+            AndroidBluetoothRemote.Resume();
             PSiptv.Services.AndroidAppUpdateService.TryResumePendingInstall(this);
         }
         protected override void OnNewIntent(Intent? intent)

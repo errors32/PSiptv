@@ -7,7 +7,8 @@ using PSiptv.Core;
 namespace PSiptv.Services;
 
 public sealed record LanRemoteDevice(string Name, IPAddress Address, int Port, string Token,
-    string DeviceId, string ProfileName, bool IsActive, string LeaderDeviceId, long LeaderEpoch);
+    string DeviceId, string ProfileName, bool IsActive, string LeaderDeviceId, long LeaderEpoch,
+    string? BluetoothAddress = null);
 
 public sealed class LanRemoteClient
 {
@@ -51,6 +52,8 @@ public sealed class LanRemoteClient
     public async Task<RemoteControlState> SendAsync(LanRemoteDevice device, string command, string value,
         CancellationToken cancellationToken)
     {
+        if (device.BluetoothAddress is { } address)
+            return await BluetoothRemoteService.SendAsync(address, command, value, cancellationToken);
         using var tcp = new TcpClient(AddressFamily.InterNetwork);
         await tcp.ConnectAsync(device.Address, device.Port, cancellationToken);
         await using var stream = tcp.GetStream();

@@ -2,6 +2,14 @@
 
 Leitor IPTV em português, desenvolvido em .NET 10 / MAUI. Não inclui listas nem conteúdos pré-carregados.
 
+## Comando remoto por Bluetooth (Android)
+
+O telemóvel pode mudar os canais favoritos e ajustar o volume no tablet ou numa Android TV através de Bluetooth, mesmo que estejam em redes Wi-Fi diferentes. Instale esta versão da PSiptv nos dois equipamentos, emparelhe-os nas definições Bluetooth do Android, abra a mesma lista com o mesmo nome de perfil e ative **Permitir controlo por Bluetooth** no ecrã **Comando remoto** em ambos.
+
+No telemóvel, escolha **Bluetooth** em **Ligação**, selecione o tablet/TV e toque em **Ativar dispositivo selecionado** se necessário. Escolha um canal favorito para o reproduzir no equipamento selecionado. **Procurar novamente** atualiza a lista de equipamentos emparelhados; acessórios sem PSiptv não respondem aos comandos. O modo **Wi-Fi** continua disponível.
+
+As aplicações devem permanecer abertas e os equipamentos dentro do alcance Bluetooth. A TV deve suportar ligações Bluetooth Classic RFCOMM entre aplicações. O vídeo continua a ser obtido pela ligação à Internet do tablet/TV; Bluetooth transporta os comandos e o estado da reprodução.
+
 ## Podcasts e favoritos na rede local
 
 O botão **Podcasts**, junto ao seletor de TV/Rádios, abre a pesquisa no diretório iTunes e os episódios dos feeds RSS. Use a estrela para guardar um podcast ou um episódio no perfil ativo. Em **Configurações → Podcasts favoritos e ouvidos** pode consultar os favoritos e, dentro de cada podcast, filtrar episódios **Por ouvir** ou **Ouvidos**, ou alterar esse estado manualmente. O leitor integrado marca o episódio como ouvido quando chega ao fim; leitores externos não comunicam a conclusão à aplicação. O estado só é conservado enquanto o podcast ou o episódio estiver nos favoritos e acompanha as cópias de segurança.

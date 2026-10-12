@@ -60,6 +60,9 @@ public static class RemoteControlService
             discovery?.Dispose(); discovery = null;
             control?.Stop(); control = null;
             token = "";
+#if ANDROID
+            PSiptv.AndroidBluetoothRemote.Stop();
+#endif
         }
     }
 
@@ -71,7 +74,13 @@ public static class RemoteControlService
         ApplyLeader(DeviceId, epoch);
     }
 
-    public static void ObserveLeader(string deviceId, long epoch) => ApplyLeader(deviceId, epoch);
+    public static void ObserveLeader(string deviceId, long epoch)
+    {
+        ApplyLeader(deviceId, epoch);
+        // Bluetooth peers remain reachable even when LAN probes cannot see them.
+        if (deviceId == leaderDeviceId && epoch == leaderEpoch)
+            leaderLastSeen = DateTimeOffset.UtcNow;
+    }
 
     private static async Task RunDiscoveryAsync(CancellationToken cancellationToken)
     {
@@ -185,41 +194,57 @@ public static class RemoteControlService
             {
                 var line = await reader.ReadLineAsync(cancellationToken);
                 var request = line is null ? null : JsonSerializer.Deserialize<RemoteControlRequest>(line, Json);
-                if (request is null || !CryptographicOperations.FixedTimeEquals(
-                        Encoding.UTF8.GetBytes(request.Token), Encoding.UTF8.GetBytes(token)))
-                    response = new(false, "Ligação expirada. Procure novamente o dispositivo.", null);
-                else if (request.Command == "favorites-snapshot")
-                {
-                    response = await MainThread.InvokeOnMainThreadAsync(async () =>
-                    {
-                        var profileKey = CurrentProfileKey;
-                        var version = AppServices.SessionVersion;
-                        if (profileKey.Length == 0 || request.Value != profileKey)
-                            return new RemoteControlResponse(false, "O perfil mudou.", null);
-                        var snapshot = await FavoritesService.SnapshotAsync();
-                        return version == AppServices.SessionVersion && snapshot is not null
-                            ? new RemoteControlResponse(true, "", null, snapshot, profileKey)
-                            : new RemoteControlResponse(false, "O perfil mudou.", null);
-                    });
-                }
-                else if (request.Command == "activate")
-                {
-                    ClaimActive();
-                    response = new(true, "", await MainThread.InvokeOnMainThreadAsync(ReadState));
-                }
-                else if (request.Command == "state")
-                    response = new(true, "", await MainThread.InvokeOnMainThreadAsync(ReadState));
-                else if (!IsActive)
-                    response = new(false, "Este dispositivo não está ativo. Selecione-o primeiro no comando remoto.",
-                        await MainThread.InvokeOnMainThreadAsync(ReadState));
-                else if (execute is null)
-                    response = new(false, "O controlo remoto não está disponível.", null);
-                else
-                    response = new(true, "", Enrich(await MainThread.InvokeOnMainThreadAsync(() => execute(request))));
+                response = await ExecuteRequestAsync(request);
             }
             catch (Exception ex) { response = new(false, ex.Message, null); }
             await writer.WriteLineAsync(JsonSerializer.Serialize(response, Json));
         }
+    }
+
+    internal static Task<RemoteControlResponse> ExecuteRequestAsync(RemoteControlRequest? request, string? expectedProfile = null) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            RemoteControlResponse response;
+            if (expectedProfile is not null && (expectedProfile.Length == 0 || expectedProfile != CurrentProfileKey))
+                response = new(false, "O perfil mudou. Procure novamente o dispositivo.", null);
+            else if (request is null || !CryptographicOperations.FixedTimeEquals(
+                    Encoding.UTF8.GetBytes(request.Token), Encoding.UTF8.GetBytes(token)))
+                response = new(false, "Ligação expirada. Procure novamente o dispositivo.", null);
+            else if (request.Command == "favorites-snapshot")
+            {
+                response = await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    var profileKey = CurrentProfileKey;
+                    var version = AppServices.SessionVersion;
+                    if (profileKey.Length == 0 || request.Value != profileKey)
+                        return new RemoteControlResponse(false, "O perfil mudou.", null);
+                    var snapshot = await FavoritesService.SnapshotAsync();
+                    return version == AppServices.SessionVersion && snapshot is not null
+                        ? new RemoteControlResponse(true, "", null, snapshot, profileKey)
+                        : new RemoteControlResponse(false, "O perfil mudou.", null);
+                });
+            }
+            else if (request.Command == "activate")
+            {
+                ClaimActive();
+                response = new(true, "", await MainThread.InvokeOnMainThreadAsync(ReadState));
+            }
+            else if (request.Command == "state")
+                response = new(true, "", await MainThread.InvokeOnMainThreadAsync(ReadState));
+            else if (!IsActive)
+                response = new(false, "Este dispositivo não está ativo. Selecione-o primeiro no comando remoto.",
+                    await MainThread.InvokeOnMainThreadAsync(ReadState));
+            else if (execute is null)
+                response = new(false, "O controlo remoto não está disponível.", null);
+            else
+                response = new(true, "", Enrich(await MainThread.InvokeOnMainThreadAsync(() => execute(request))));
+            return response;
+        });
+
+    internal static RemoteDiscoveryResponse BluetoothDiscoveryResponse()
+    {
+        EnsureScope();
+        return DiscoveryResponse();
     }
 
     private static RemoteControlState ReadState() => Enrich(readState?.Invoke() ??

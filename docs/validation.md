@@ -1,5 +1,15 @@
 # Validação
 
+## Novidades da 1.6.2
+
+- Emparelhe telemóvel e tablet/Android TV no Android, abra a mesma lista/perfil e ative o controlo Bluetooth em ambos. Use redes Wi-Fi diferentes e confirme ativação do tablet/TV, mudança dos canais favoritos e volume.
+- Confirme que outro perfil/lista não permite controlo, que a autorização de reprodução continua a ser pedida no equipamento e que acessórios Bluetooth sem PSiptv apresentam erro sem executar comandos.
+- Desligue o Bluetooth, revogue a permissão de dispositivos próximos, afaste os equipamentos e coloque cada aplicação em segundo plano. Confirme erros, cancelamento e recuperação ao reabrir/reativar.
+- Alterne rapidamente entre Wi-Fi/Bluetooth e equipamentos, feche a página durante uma consulta e mantenha o comando aberto durante mais de 15 segundos em Wi-Fi diferentes. Confirme que respostas antigas não substituem o equipamento selecionado e que o tablet/TV permanece ativo.
+- Confirme que a sincronização Bluetooth de favoritos/podcasts e o comando Wi-Fi continuam a funcionar.
+
+O protocolo do comando Bluetooth tem 11 novas verificações automatizadas. O rádio Bluetooth e os controlos de reprodução requerem validação física num tablet e numa Android TV com suporte a RFCOMM.
+
 ## Novidades da 1.6.1
 
 - Reordene/oculte secções, fixe conteúdos e troque de perfil/lista. Confirme isolamento, reinício e reposição de backup antigo e atual.

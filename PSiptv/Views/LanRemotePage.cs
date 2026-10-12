@@ -3,7 +3,7 @@ using PSiptv.Services;
 
 namespace PSiptv.Views;
 
-/// <summary>Compact phone/tablet remote for another PSiptv instance on the same Wi-Fi.</summary>
+/// <summary>Phone/tablet remote over the local network or paired Android Bluetooth devices.</summary>
 public sealed class LanRemotePage : LocalizedPage
 {
     private readonly LanRemoteClient client = new();
@@ -11,6 +11,11 @@ public sealed class LanRemotePage : LocalizedPage
     private readonly Label status = Ui.Text("A procurar dispositivos no Wi-Fi…", 14, true);
     private readonly Label nowPlaying = Ui.Text("", 16);
     private readonly Picker devicePicker = new() { Title = "Dispositivo" };
+    private readonly Picker transportPicker = new() { Title = "Ligação", ItemsSource = new[] { "Wi-Fi", "Bluetooth" }, SelectedIndex = 0 };
+    private readonly Switch bluetoothEnabled = new() { IsToggled = BluetoothRemoteService.Enabled };
+    private readonly Label bluetoothStatus = Ui.Text("", 13, true);
+    private bool updatingBluetooth;
+    private bool UsingBluetooth => BluetoothRemoteService.Supported && transportPicker.SelectedIndex == 1;
     private readonly Button activateRemote;
     private readonly Button activateHere;
     private readonly Slider volume = new() { Minimum = 0, Maximum = 100 };
@@ -21,6 +26,7 @@ public sealed class LanRemotePage : LocalizedPage
     private LanRemoteDevice? selectedDevice;
     private bool applyingState;
     private bool refreshing;
+    private bool discoveryPending;
     private IReadOnlyList<RemoteChannel> displayedChannels = [];
 
     public LanRemotePage()
@@ -30,9 +36,29 @@ public sealed class LanRemotePage : LocalizedPage
         activateRemote = Ui.Button("Ativar dispositivo selecionado", ActivateRemoteAsync);
         activateHere = Ui.Button("Usar este dispositivo", ActivateHereAsync);
         var refresh = Ui.Button("Procurar novamente", DiscoverAsync);
+        transportPicker.IsVisible = BluetoothRemoteService.Supported;
+        transportPicker.SelectedIndexChanged += async (_, _) =>
+        {
+            selectedDevice = null;
+            devices.Clear();
+            devicePicker.ItemsSource = null;
+            ClearRemoteState();
+            await DiscoverAsync();
+        };
+        bluetoothEnabled.Toggled += async (_, e) =>
+        {
+            if (updatingBluetooth) return;
+            try { await BluetoothRemoteService.SetEnabledAsync(e.Value); }
+            catch (Exception ex) { status.Text = ex.Message; }
+            updatingBluetooth = true;
+            bluetoothEnabled.IsToggled = BluetoothRemoteService.Enabled;
+            updatingBluetooth = false;
+            if (UsingBluetooth) await DiscoverAsync();
+        };
 
         devicePicker.SelectedIndexChanged += async (_, _) =>
         {
+            if (refreshing) return;
             if (devicePicker.SelectedIndex < 0 || devicePicker.SelectedIndex >= devices.Count) return;
             selectedDevice = devices[devicePicker.SelectedIndex];
             await RefreshStateAsync();
@@ -108,7 +134,25 @@ public sealed class LanRemotePage : LocalizedPage
                 new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Star)],
             SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container)
         };
-        root.Add(Ui.Text("Comando remoto por Wi-Fi", 24));
+        var bluetoothRow = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Auto)],
+            ColumnSpacing = 8
+        };
+        bluetoothRow.Add(Ui.Text("Permitir controlo por Bluetooth", 14));
+        bluetoothRow.Add(bluetoothEnabled, 1);
+        bluetoothRow.Add(Ui.Button("Ajuda", () => LanguageService.AlertAsync(this, "Bluetooth",
+            "Emparelhe os equipamentos nas definições Bluetooth do Android. Ative esta opção em ambos e mantenha as aplicações abertas com a mesma lista e perfil. Pode usar redes Wi-Fi diferentes.")), 2);
+        var bluetoothOptions = Ui.Stack(bluetoothRow, bluetoothStatus);
+        bluetoothOptions.IsVisible = BluetoothRemoteService.Supported;
+        var connectionRow = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)],
+            ColumnSpacing = 8
+        };
+        connectionRow.Add(transportPicker);
+        connectionRow.Add(refresh, 1);
+        root.Add(Ui.Stack(Ui.Text("Comando remoto", 24), connectionRow, bluetoothOptions));
         root.Add(status, 0, 1);
         root.Add(devicePicker, 0, 2);
         root.Add(deviceActions, 0, 3);
@@ -122,14 +166,18 @@ public sealed class LanRemotePage : LocalizedPage
         base.OnAppearing();
         lifetime?.Cancel();
         lifetime = new CancellationTokenSource();
+        var cancellationToken = lifetime.Token;
         RemoteControlService.ActiveDeviceChanged += OnActiveDeviceChanged;
+        BluetoothRemoteService.Changed += RefreshBluetoothStatus;
+        RefreshBluetoothStatus();
         await DiscoverAsync();
-        _ = PollAsync(lifetime.Token);
+        if (!cancellationToken.IsCancellationRequested) _ = PollAsync(cancellationToken);
     }
 
     protected override void OnDisappearing()
     {
         RemoteControlService.ActiveDeviceChanged -= OnActiveDeviceChanged;
+        BluetoothRemoteService.Changed -= RefreshBluetoothStatus;
         lifetime?.Cancel();
         lifetime?.Dispose();
         lifetime = null;
@@ -143,7 +191,7 @@ public sealed class LanRemotePage : LocalizedPage
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
-                if (selectedDevice is null) await DiscoverAsync();
+                if (selectedDevice is null && !UsingBluetooth) await DiscoverAsync();
                 else await RefreshStateAsync();
             }
             catch (OperationCanceledException) { break; }
@@ -152,43 +200,65 @@ public sealed class LanRemotePage : LocalizedPage
 
     private async Task DiscoverAsync()
     {
-        if (refreshing || lifetime?.IsCancellationRequested != false) return;
+        if (lifetime?.IsCancellationRequested != false) return;
+        if (refreshing) { discoveryPending = true; return; }
         refreshing = true;
         status.Text = "A procurar dispositivos com o perfil ativo…";
         try
         {
+            var bluetooth = UsingBluetooth;
             var previousId = selectedDevice?.DeviceId;
-            var found = await client.DiscoverAsync(RemoteControlService.CurrentProfileKey, lifetime.Token);
+            var found = bluetooth ? BluetoothRemoteService.PairedDevices() :
+                await client.DiscoverAsync(RemoteControlService.CurrentProfileKey, lifetime.Token);
+            if (bluetooth != UsingBluetooth || lifetime?.IsCancellationRequested != false) return;
             devices.Clear(); devices.AddRange(found);
             devicePicker.ItemsSource = devices.Select(DeviceLabel).ToArray();
             var index = previousId is null ? devices.FindIndex(device => device.IsActive) :
                 devices.FindIndex(device => device.DeviceId == previousId);
-            if (index < 0 && devices.Count > 0) index = 0;
+            if (index < 0 && devices.Count > 0 && !bluetooth) index = 0;
             selectedDevice = index < 0 ? null : devices[index];
             devicePicker.SelectedIndex = index;
             status.Text = devices.Count == 0
-                ? "Nenhum outro dispositivo com este perfil foi encontrado. Confirme que ambos estão no mesmo Wi-Fi."
-                : $"{devices.Count} dispositivo(s) encontrado(s) · Perfil {UserProfileService.Active.Name}";
+                ? (bluetooth ? "Ative o controlo Bluetooth e emparelhe os equipamentos nas definições do Android." :
+                    "Nenhum outro dispositivo com este perfil foi encontrado. Confirme que ambos estão no mesmo Wi-Fi.")
+                : bluetooth ? "Escolha o tablet ou a Android TV emparelhados com a aplicação aberta e o controlo Bluetooth ativo." :
+                    $"{devices.Count} dispositivo(s) encontrado(s) · Perfil {UserProfileService.Active.Name}";
             if (selectedDevice is not null) await RefreshStateAsync();
             else ClearRemoteState();
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { status.Text = ex.Message; }
-        finally { refreshing = false; }
+        finally
+        {
+            refreshing = false;
+            if (discoveryPending)
+            {
+                discoveryPending = false;
+                await DiscoverAsync();
+            }
+        }
     }
 
     private async Task RefreshStateAsync()
     {
         if (selectedDevice is not { } device || lifetime?.IsCancellationRequested != false) return;
-        try { ApplyState(await client.SendAsync(device, "state", "", lifetime.Token)); }
+        try
+        {
+            var state = await client.SendAsync(device, "state", "", lifetime.Token);
+            if (selectedDevice == device && lifetime?.IsCancellationRequested == false) ApplyState(state);
+        }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { status.Text = ex.Message; }
+        catch (Exception ex) { if (selectedDevice == device) { status.Text = ex.Message; ClearRemoteState(); } }
     }
 
     private async Task SendAsync(string command, string value)
     {
         if (selectedDevice is not { } device || lifetime?.IsCancellationRequested != false) return;
-        try { ApplyState(await client.SendAsync(device, command, value, lifetime.Token)); }
+        try
+        {
+            var state = await client.SendAsync(device, command, value, lifetime.Token);
+            if (selectedDevice == device && lifetime?.IsCancellationRequested == false) ApplyState(state);
+        }
         catch (OperationCanceledException) { }
         catch (Exception ex) { status.Text = ex.Message; }
     }
@@ -199,6 +269,7 @@ public sealed class LanRemotePage : LocalizedPage
         try
         {
             var state = await client.SendAsync(device, "activate", "", lifetime?.Token ?? CancellationToken.None);
+            if (selectedDevice != device || lifetime?.IsCancellationRequested != false) return;
             RemoteControlService.ObserveLeader(state.LeaderDeviceId, state.LeaderEpoch);
             ApplyState(state);
             status.Text = $"{state.DeviceName} é agora o dispositivo ativo.";
@@ -245,6 +316,11 @@ public sealed class LanRemotePage : LocalizedPage
     }
 
     private void OnActiveDeviceChanged() => Dispatcher.Dispatch(RefreshActiveButtons);
+    private void RefreshBluetoothStatus()
+    {
+        bluetoothStatus.Text = LanguageService.Text(BluetoothRemoteService.Status);
+        bluetoothStatus.IsVisible = BluetoothRemoteService.Status.Length > 0;
+    }
 
     private void RefreshActiveButtons()
     {
@@ -252,8 +328,9 @@ public sealed class LanRemotePage : LocalizedPage
         activateHere.Text = RemoteControlService.IsActive ? "✓ Este dispositivo está ativo" : "Usar este dispositivo";
     }
 
-    private static string DeviceLabel(LanRemoteDevice device) =>
-        device.IsActive ? $"● {device.Name} (ativo)" : device.Name;
+    private static string DeviceLabel(LanRemoteDevice device) => device.BluetoothAddress is { } address
+        ? $"{device.Name} · {address[^Math.Min(5, address.Length)..]} · Bluetooth"
+        : device.IsActive ? $"● {device.Name} (ativo)" : device.Name;
 
     private static bool SameChannels(IReadOnlyList<RemoteChannel> current, IReadOnlyList<RemoteChannel> updated)
     {
