@@ -20,7 +20,7 @@ O botão **Podcasts**, junto ao seletor de TV/Rádios, abre a pesquisa no diret�
 
 Na primeira abertura de uma lista desbloqueada após iniciar a aplicação, a PSiptv procura outras instâncias abertas na mesma rede local, com a mesma ligação à lista e o mesmo nome de perfil. Com esta versão nos dois equipamentos, combina alterações individuais de favoritos, estados ouvidos e progresso, conservando remoções para não recuperar dados apagados. Alterações independentes são preservadas; conflitos no mesmo item usam a data e um desempate determinístico. Versões antigas mantêm o comportamento de substituição pela cópia mais recente. A consulta tem um limite de sete segundos e uma falha de rede permite continuar com os favoritos locais. Regressar do segundo plano ou trocar de perfil durante a mesma execução não repete a consulta. Os relógios dos equipamentos devem estar acertados; redes que bloqueiam descoberta UDP ou a porta TCP 45873 impedem a sincronização. Favoritos antigos sem data mantêm-se legíveis e passam a ter uma data na próxima alteração.
 
-Em **Sincronização e cópia de segurança** e nas definições dos podcasts pode ativar a sincronização **Bluetooth**, sem exigir a mesma rede Wi-Fi. Emparelhe os equipamentos nas definições Android, ative a opção nos dois e abra a mesma lista com o mesmo nome de perfil. Escolha o equipamento para a primeira sincronização; as seguintes são tentadas a cada minuto enquanto a aplicação estiver aberta. Usa Bluetooth Classic seguro do Android, independente dos serviços proprietários Xiaomi, e não sincroniza listas ou credenciais. Consulte [Validação](docs/validation.md) para testes e limitações.
+Em **Sincronização e cópia de segurança** e nas definições dos podcasts pode ativar a sincronização **Bluetooth**, sem exigir a mesma rede Wi-Fi. Instale a mesma versão nos dois equipamentos, emparelhe-os nas definições Android, ative a opção nos dois e abra a mesma lista com o mesmo nome de perfil. Escolha o equipamento uma vez; as seguintes sincronizações ocorrem ao marcar podcasts como ouvidos/por ouvir ou filmes/episódios como vistos/por ver. Sem consultas periódicas. Usa Bluetooth Classic seguro do Android e não sincroniza listas ou credenciais. Consulte [Validação](docs/validation.md) para testes e limitações.
 
 Referência do diretório: [iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html).
 
@@ -161,7 +161,7 @@ Se aparecer este erro no arranque, os recursos Java do APK e os IDs usados pelo 
 6. No ecrã principal, prima **⋯ → Abrir lista** e escolha a lista guardada.
 7. Para usar outro leitor, prima **Abrir com leitor externo** durante a reprodução, ou ative **Definições → Reprodução → Preferir leitor externo**. Instale primeiro um leitor compatível, por exemplo VLC. Em Windows, selecione-o no diálogo do sistema.
 
-## Sincronização de podcasts por Bluetooth (Android)
+## Sincronização de conteúdos vistos e ouvidos por Bluetooth (Android)
 
 Nas **Definições dos podcasts → Sincronização por Bluetooth**, ative a opção em
 ambos os equipamentos, depois de os emparelhar nas definições do Android.
@@ -169,18 +169,26 @@ Abra a mesma lista com o mesmo nome de perfil nos dois e prima **Escolher
 dispositivo e sincronizar** num deles. A escolha fica guardada mesmo que o outro
 equipamento ainda não esteja disponível.
 
-Os podcasts favoritos, episódios ouvidos/por ouvir e posição de reprodução são
-sincronizados nos dois sentidos. Alterações locais desencadeiam uma troca após
-cerca de dois segundos; a aplicação também verifica a ligação a cada 17–22
-segundos, para retomar automaticamente após uma interrupção. O Bluetooth pode
-ser ligado nas definições do Android depois de ativar esta opção na aplicação.
+Os podcasts e os estados vistos de filmes e episódios são sincronizados nos dois
+sentidos. Marcar um podcast como ouvido/por ouvir ou um filme/episódio como
+concluído/por ver desencadeia uma troca em segundo plano, agrupando marcações
+próximas. Atualizações da posição, visitas a podcasts, início de reprodução e
+alterações de favoritos não desencadeiam ligações. Não existem consultas ou
+tentativas periódicas. Se a troca falhar, as alterações ficam guardadas até à
+próxima marcação, reabertura da aplicação ou ativação do rádio Bluetooth.
 Ambas as aplicações devem permanecer abertas e o Bluetooth ligado; não é
 necessária uma rede Wi-Fi. Os downloads de áudio não são transferidos.
 
-As alterações mais recentes prevalecem por episódio, e as remoções de favoritos
-e marcações como «por ouvir» também são propagadas. Cada lista/perfil mantém os
+As alterações mais recentes prevalecem por conteúdo, incluindo marcações como
+«por ouvir» e «por ver». Cada troca transporta também o estado atual dos favoritos
+e progresso. Cada lista/perfil mantém os
 seus dados e equipamento escolhido. A sincronização para ao sair da aplicação
 ou ao desativar a opção.
+
+A versão 1.6.9 usa confirmação de receção antes de fechar a ligação. Atualize
+ambos os equipamentos: versões com protocolos diferentes são recusadas. A
+página de sincronização conserva o último erro, distinguindo lista/perfil,
+versão, interrupção da ligação e falha de armazenamento.
 
 ## Testes
 

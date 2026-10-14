@@ -70,6 +70,18 @@ public sealed class CollectionsPage : LocalizedPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        ExperienceService.ViewingStatesImported -= OnViewingStatesImported;
+        ExperienceService.ViewingStatesImported += OnViewingStatesImported;
+        await RefreshAsync();
+    }
+    protected override void OnDisappearing()
+    {
+        ExperienceService.ViewingStatesImported -= OnViewingStatesImported;
+        base.OnDisappearing();
+    }
+    private void OnViewingStatesImported() => Dispatcher.Dispatch(async () => await RefreshAsync());
+    private async Task RefreshAsync()
+    {
         try
         {
             if (AppServices.ActiveAccount is not { } account) return;
@@ -134,9 +146,20 @@ public sealed class ItemLibraryPage(MediaItem item) : LocalizedPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        ExperienceService.ViewingStatesImported -= OnViewingStatesImported;
+        ExperienceService.ViewingStatesImported += OnViewingStatesImported;
         if (!initialized) { initialized = true; Ui.Page(this, item.Name); Content = new ScrollView { Content = rows, Padding = 18 }; }
         try { await RefreshAsync(); } catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
     }
+    protected override void OnDisappearing()
+    {
+        ExperienceService.ViewingStatesImported -= OnViewingStatesImported;
+        base.OnDisappearing();
+    }
+    private void OnViewingStatesImported() => Dispatcher.Dispatch(async () =>
+    {
+        try { await RefreshAsync(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+    });
     private async Task RefreshAsync()
     {
         rows.Clear();

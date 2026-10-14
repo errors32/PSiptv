@@ -7,6 +7,7 @@ public static class ExperienceService
 {
     private static readonly SemaphoreSlim gate = new(1, 1);
     public static event Action? Changed;
+    public static event Action? ViewingStatesImported;
     public static readonly string[] HomeSections = ["Fixados", "Continuar a ver", "Canais recentes", "Favoritos", "A começar", "Gravações recentes"];
     public static readonly string[] OptionKeys = ["ui.textScale", "ui.density", "ui.reduceMotion", "channels.fallback", "channels.quality", "dvr.before", "dvr.after", "dvr.limit", "dvr.retention", "tv.watchNext", "shortcut.search", "shortcut.home", "shortcut.fullscreen"];
     public static double TextScale => double.TryParse(Preferences.Default.Get("ui.textScale", "1"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, .85, 1.4) : 1;
@@ -25,15 +26,19 @@ public static class ExperienceService
         if (AppServices.ActiveAccount is not { } account) throw new InvalidOperationException("Abra uma lista.");
         var profile = UserProfileService.Active.Id;
         var version = AppServices.SessionVersion;
+        var synchronize = false;
         await gate.WaitAsync();
         try
         {
             var data = await LoadAsync(account.Id, profile);
             if (version != AppServices.SessionVersion) throw new OperationCanceledException();
+            var previous = data.States.ToDictionary();
             update(data);
+            synchronize = ViewingStateSync.Track(data, previous);
             await SecureStorage.Default.SetAsync(Key(account.Id, profile), JsonSerializer.Serialize(data));
         }
         finally { gate.Release(); }
+        if (synchronize) NearbySyncService.NotifyConsumptionChanged(UserProfileService.Scope(account.Id, profile));
         Changed?.Invoke();
         _ = TvDiscoveryService.RefreshAsync();
     }
@@ -43,6 +48,25 @@ public static class ExperienceService
         try { await SecureStorage.Default.SetAsync(Key(account, profile), JsonSerializer.Serialize(PersonalLibrary.Merge(await LoadAsync(account, profile), imported))); }
         finally { gate.Release(); }
         Changed?.Invoke();
+    }
+    public static async Task ImportViewingStatesAsync(string account, string profile,
+        IReadOnlyDictionary<string, ViewingStateMutation> states)
+    {
+        var changed = false;
+        await gate.WaitAsync();
+        try
+        {
+            var data = await LoadAsync(account, profile);
+            changed = ViewingStateSync.Merge(data, states);
+            if (changed) await SecureStorage.Default.SetAsync(Key(account, profile), JsonSerializer.Serialize(data));
+        }
+        finally { gate.Release(); }
+        if (changed && AppServices.ActiveAccount?.Id == account && UserProfileService.Active.Id == profile)
+        {
+            Changed?.Invoke();
+            ViewingStatesImported?.Invoke();
+            _ = TvDiscoveryService.RefreshAsync();
+        }
     }
     public static Dictionary<string, string> ExportOptions() => OptionKeys.Where(k => Preferences.Default.ContainsKey(k)).ToDictionary(k => k, k => Preferences.Default.Get(k, ""));
     public static void ImportOptions(IReadOnlyDictionary<string, string>? options)

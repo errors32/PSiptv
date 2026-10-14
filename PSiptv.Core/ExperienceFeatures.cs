@@ -18,6 +18,7 @@ public sealed class PersonalLibrary
     public List<MediaItem> Pinned { get; set; } = [];
     public List<PersonalCollection> Collections { get; set; } = [];
     public Dictionary<string, ViewingState> States { get; set; } = [];
+    public Dictionary<string, ViewingStateMutation> StateChanges { get; set; } = [];
     public Dictionary<string, string> PreferredChannels { get; set; } = [];
     public ViewingState State(MediaItem item) => States.TryGetValue(CatalogPreferences.ItemKey(item), out var state) && Enum.IsDefined(state) ? state : ViewingState.Unwatched;
     public void SetState(MediaItem item, ViewingState state) => States[CatalogPreferences.ItemKey(item)] = state;
@@ -32,7 +33,7 @@ public sealed class PersonalLibrary
             if (current is null) local.Collections.Add(collection);
             else { current.Name = collection.Name; current.Items = current.Items.Concat(collection.Items).DistinctBy(CatalogPreferences.ItemKey).ToList(); }
         }
-        foreach (var pair in imported.States) local.States[pair.Key] = pair.Value;
+        ViewingStateSync.Merge(local, ViewingStateSync.Snapshot(imported));
         foreach (var pair in imported.PreferredChannels) local.PreferredChannels[pair.Key] = pair.Value;
         return local;
     }

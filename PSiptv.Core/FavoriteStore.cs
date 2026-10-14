@@ -11,7 +11,8 @@ public sealed record FavoriteSnapshot(DateTimeOffset ModifiedAt, IReadOnlyList<F
     IReadOnlyDictionary<string, PodcastHeardEntry> HeardEpisodes,
     IReadOnlyDictionary<string, PodcastPlaybackEntry>? PodcastProgress = null,
     IReadOnlyDictionary<string, DateTimeOffset>? PodcastVisits = null,
-    FavoriteSyncState? Sync = null);
+    FavoriteSyncState? Sync = null,
+    IReadOnlyDictionary<string, ViewingStateMutation>? ViewingStates = null);
 
 public sealed class FavoriteStore(
     Func<string, Task<string?>> read,
@@ -127,9 +128,9 @@ public sealed class FavoriteStore(
         finally { gate.Release(); }
     }
 
-    public Task SetHeardAsync(string scope, MediaItem episode, bool heard) => SetHeardAsync(scope, [episode], heard);
+    public Task<bool> SetHeardAsync(string scope, MediaItem episode, bool heard) => SetHeardAsync(scope, [episode], heard);
 
-    public async Task SetHeardAsync(string scope, IReadOnlyList<MediaItem> episodes, bool heard)
+    public async Task<bool> SetHeardAsync(string scope, IReadOnlyList<MediaItem> episodes, bool heard)
     {
         await gate.WaitAsync();
         try
@@ -149,8 +150,9 @@ public sealed class FavoriteStore(
                 else values.Remove(episode.Id);
                 changed = true;
             }
-            if (!changed) return;
+            if (!changed) return false;
             await SaveAsync(scope, snapshot with { ModifiedAt = date, HeardEpisodes = values, PodcastProgress = progress });
+            return true;
         }
         finally { gate.Release(); }
     }

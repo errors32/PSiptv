@@ -5,6 +5,7 @@ namespace PSiptv.Views;
 internal sealed class NearbySyncView : ContentView
 {
     private readonly Label status = Ui.Text("", 13, true);
+    private readonly Label error = Ui.Text("", 13, true);
     private readonly Switch enabled = new() { IsToggled = NearbySyncService.Enabled };
     private bool updating;
     private bool busy;
@@ -29,14 +30,19 @@ internal sealed class NearbySyncView : ContentView
         };
         Content = Ui.Card(Ui.Stack(Ui.Text("Sincronização por Bluetooth", 20),
             Ui.Text("Ativar neste equipamento"), enabled,
-            Ui.Text("Emparelhe os equipamentos no Android, ative esta opção em ambos, abra a mesma lista com o mesmo nome de perfil e escolha o dispositivo uma vez. Os podcasts favoritos, episódios ouvidos e posição de reprodução sincronizam automaticamente enquanto ambas as aplicações estão abertas, mesmo sem Wi-Fi. Se a ligação cair, a aplicação volta a tentar. Os ficheiros de áudio descarregados ficam em cada equipamento.", 13, true),
-            status, Ui.Button("Escolher dispositivo e sincronizar", SynchronizeAsync)));
+            Ui.Text("Instale a mesma versão nos dois equipamentos, emparelhe-os no Android, ative esta opção em ambos e abra a mesma lista com o mesmo nome de perfil. Escolha o equipamento uma vez. A sincronização ocorre em segundo plano quando um podcast é marcado como ouvido/por ouvir ou um filme/episódio como visto/por ver. Sem consultas periódicas nem envios durante a reprodução. Se a ligação falhar, as alterações ficam pendentes até à próxima marcação, reabertura da aplicação ou restabelecimento do Bluetooth. Os ficheiros de áudio não são transferidos.", 13, true),
+            status, error, Ui.Button("Escolher dispositivo e sincronizar", SynchronizeAsync)));
         Loaded += (_, _) => { NearbySyncService.Changed += Refresh; Refresh(); };
         Unloaded += (_, _) => NearbySyncService.Changed -= Refresh;
         Refresh();
     }
 
-    private void Refresh() => status.Text = LanguageService.Text(NearbySyncService.Status);
+    private void Refresh()
+    {
+        status.Text = LanguageService.Text(NearbySyncService.Status);
+        error.Text = LanguageService.Text(NearbySyncService.LastError);
+        error.IsVisible = error.Text.Length > 0;
+    }
     private Page? FindPage()
     {
         for (Element? current = this; current is not null; current = current.Parent)
@@ -59,8 +65,7 @@ internal sealed class NearbySyncView : ContentView
             if (index >= 0) await NearbySyncService.SynchronizeAsync(devices[index].Address);
         }
         catch (InvalidOperationException ex) { await Ui.ErrorAsync(page, ex); }
-        catch (Exception ex) { await Ui.ErrorAsync(page, new InvalidOperationException(
-            "Não foi possível sincronizar por Bluetooth. Confirme que ambas as aplicações estão abertas com a mesma lista e perfil.", ex)); }
+        catch (Exception ex) { NearbySyncService.ReportError(ex); await Ui.ErrorAsync(page, new InvalidOperationException(NearbySyncService.ErrorText(ex), ex)); }
         finally { busy = false; Refresh(); }
     }
 }

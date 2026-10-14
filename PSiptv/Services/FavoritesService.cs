@@ -12,8 +12,6 @@ public static class FavoritesService
     private static IReadOnlyList<FavoriteEntry> entries = [];
     private static HashSet<string> keys = [];
     public static event Action? Changed;
-    // Only local writes request a Bluetooth exchange; imports must not echo indefinitely.
-    internal static event Action? LocalChanged;
     public static IReadOnlyList<MediaItem> Items => AppServices.ActiveAccount is { } account &&
         loadedScope == UserProfileService.Scope(account.Id)
         ? entries.Select(e => e.Item).ToArray() : [];
@@ -36,7 +34,6 @@ public static class FavoritesService
         var version = AppServices.SessionVersion;
         var scope = UserProfileService.Scope(account.Id);
         var saved = await Store.SetAsync(account, item, !Contains(item), scope);
-        LocalChanged?.Invoke();
         if (AppServices.ActiveAccount?.Id == account.Id && AppServices.SessionVersion == version) Apply(scope, saved);
     }
 
@@ -51,8 +48,9 @@ public static class FavoritesService
         if (AppServices.ActiveAccount is not { } account ||
             accountId is not null && account.Id != accountId ||
             session is not null && AppServices.SessionVersion != session) return;
-        await Store.SetHeardAsync(UserProfileService.Scope(account.Id), item, heard);
-        LocalChanged?.Invoke();
+        var scope = UserProfileService.Scope(account.Id);
+        if (!await Store.SetHeardAsync(scope, item, heard)) return;
+        NearbySyncService.NotifyConsumptionChanged(scope);
         Changed?.Invoke();
     }
 
@@ -68,8 +66,8 @@ public static class FavoritesService
     {
         if (AppServices.ActiveAccount is not { } account) return;
         var scope = UserProfileService.Scope(account.Id);
-        await Store.SetHeardAsync(scope, items, true);
-        LocalChanged?.Invoke();
+        if (!await Store.SetHeardAsync(scope, items, true)) return;
+        NearbySyncService.NotifyConsumptionChanged(scope);
         if (UserProfileService.Scope(AppServices.ActiveAccount?.Id ?? "") == scope) Changed?.Invoke();
     }
 
@@ -78,14 +76,12 @@ public static class FavoritesService
         if (AppServices.ActiveAccount?.Id != accountId || AppServices.SessionVersion != session) return;
         var portable = item with { Url = item.PodcastAudioUrl.Length > 0 ? item.PodcastAudioUrl : item.Url, IsCatchup = false };
         await Store.RecordPodcastAsync(UserProfileService.Scope(accountId), portable, position, duration);
-        LocalChanged?.Invoke();
     }
 
     public static async Task VisitPodcastAsync(string id, DateTimeOffset date)
     {
         if (AppServices.ActiveAccount is not { } account) return;
         await Store.VisitPodcastAsync(UserProfileService.Scope(account.Id), id, date);
-        LocalChanged?.Invoke();
     }
 
     public static async Task DeleteAsync(string accountId)

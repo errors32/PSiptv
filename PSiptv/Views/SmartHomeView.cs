@@ -27,7 +27,23 @@ public sealed class SmartHomeView : ContentView
             renderCurrent?.Invoke();
         };
         Clear();
+        Loaded += (_, _) => ExperienceService.ViewingStatesImported += OnViewingStatesImported;
+        Unloaded += (_, _) => ExperienceService.ViewingStatesImported -= OnViewingStatesImported;
     }
+
+    private void OnViewingStatesImported() => Dispatcher.Dispatch(async () =>
+    {
+        if (AppServices.ActiveAccount is not { } account) return;
+        var version = AppServices.SessionVersion;
+        try
+        {
+            var updated = await ExperienceService.LoadAsync(account.Id);
+            if (version != AppServices.SessionVersion) return;
+            personal = updated;
+            renderCurrent?.Invoke();
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+    });
 
     public void ApplyDesign() => renderCurrent?.Invoke();
 
