@@ -2,6 +2,7 @@ using Android.Bluetooth;
 using Android.Content;
 using Android.Content.PM;
 using AndroidX.Core.Content;
+using System.Threading.Channels;
 using PSiptv.Core;
 using PSiptv.Services;
 
@@ -14,6 +15,7 @@ internal static class AndroidBluetoothSync
     private static readonly SemaphoreSlim clientGate = new(1);
     private static CancellationTokenSource? lifetime;
     private static BluetoothServerSocket? listener;
+    private static Channel<bool>? pendingChanges;
     private static bool foreground;
     private static BluetoothAdapter? Adapter => (Android.App.Application.Context
         .GetSystemService(Context.BluetoothService) as BluetoothManager)?.Adapter;
@@ -38,12 +40,14 @@ internal static class AndroidBluetoothSync
         lock (sync)
         {
             if (!foreground || !NearbySyncService.Enabled || !HasPermission || lifetime is not null) return;
-            if (Adapter?.IsEnabled != true)
-            { NearbySyncService.SetStatus("Ligue o Bluetooth nas definições do Android."); return; }
             lifetime = new();
             var token = lifetime.Token;
+            var changes = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+                { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = true });
+            pendingChanges = changes;
+            FavoritesService.LocalChanged += RequestSync;
             _ = Task.Run(() => ListenAsync(token));
-            _ = AutoSyncAsync(token);
+            _ = AutoSyncAsync(changes.Reader, token);
         }
     }
 
@@ -51,12 +55,19 @@ internal static class AndroidBluetoothSync
     {
         lock (sync)
         {
+            FavoritesService.LocalChanged -= RequestSync;
+            pendingChanges = null;
             lifetime?.Cancel();
             lifetime?.Dispose();
             lifetime = null;
             try { listener?.Close(); } catch (Java.IO.IOException) { }
             listener = null;
         }
+    }
+
+    private static void RequestSync()
+    {
+        lock (sync) pendingChanges?.Writer.TryWrite(true);
     }
 
     internal static IReadOnlyList<NearbySyncDevice> PairedDevices()
@@ -68,9 +79,21 @@ internal static class AndroidBluetoothSync
 
     private static async Task ListenAsync(CancellationToken token)
     {
+        while (!token.IsCancellationRequested)
+        {
+            await ListenOnceAsync(token);
+            try { await Task.Delay(TimeSpan.FromSeconds(5), token); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    private static async Task ListenOnceAsync(CancellationToken token)
+    {
         BluetoothServerSocket? server = null;
         try
         {
+            if (Adapter?.IsEnabled != true)
+            { NearbySyncService.SetStatus("Ligue o Bluetooth nas definições do Android."); return; }
             server = Adapter?.ListenUsingRfcommWithServiceRecord("PSiptv Profile Sync", ServiceId);
             if (server is null) return;
             lock (sync)
@@ -90,7 +113,7 @@ internal static class AndroidBluetoothSync
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
-        { if (!token.IsCancellationRequested) NearbySyncService.SetStatus("Bluetooth indisponível. Desative e volte a ativar a sincronização."); }
+        { if (!token.IsCancellationRequested) NearbySyncService.SetStatus("À espera do equipamento Bluetooth. A ligação será tentada automaticamente."); }
         finally
         {
             try { server?.Close(); } catch (Java.IO.IOException) { }
@@ -115,6 +138,13 @@ internal static class AndroidBluetoothSync
             timeout.CancelAfter(TimeSpan.FromSeconds(30));
             using var device = Adapter!.GetRemoteDevice(address);
             if (device?.BondState != Bond.Bonded) throw new InvalidOperationException("Emparelhe os equipamentos nas definições Bluetooth do Android.");
+            // Remember the choice even if the other app is not open yet, so retries can connect later.
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                timeout.Token.ThrowIfCancellationRequested();
+                if (profileKey == RemoteControlService.CurrentProfileKey)
+                    Preferences.Default.Set("profile-sync.bluetooth.peer." + profileKey, address);
+            });
             using var socket = device.CreateRfcommSocketToServiceRecord(ServiceId)
                 ?? throw new InvalidOperationException("O dispositivo não suporta esta ligação Bluetooth.");
             using var cancellation = timeout.Token.Register(() => Close(socket));
@@ -122,8 +152,6 @@ internal static class AndroidBluetoothSync
             await Task.Run(socket.Connect, timeout.Token);
             if (profileKey != RemoteControlService.CurrentProfileKey) return;
             await ExchangeAsync(socket, false, timeout.Token);
-            if (profileKey == RemoteControlService.CurrentProfileKey)
-                Preferences.Default.Set("profile-sync.bluetooth.peer." + profileKey, address);
         }
         finally { clientGate.Release(); }
     }
@@ -148,10 +176,17 @@ internal static class AndroidBluetoothSync
             { CheckContext(); var value = await FavoritesService.SnapshotAsync(); CheckContext(); return value!; }),
             snapshot => MainThread.InvokeOnMainThreadAsync(async () =>
             { CheckContext(); await FavoritesService.ImportNewerAsync(context.Account, context.Profile, snapshot); CheckContext(); }), timeout.Token);
+        await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            CheckContext();
+            // The receiving device can also initiate subsequent exchanges after local edits.
+            if (socket.RemoteDevice?.Address is { Length: > 0 } address)
+                Preferences.Default.Set("profile-sync.bluetooth.peer." + context.Key, address);
+        });
         NearbySyncService.SetStatus(LanguageService.Format("Sincronização Bluetooth concluída · {0}", DateTimeOffset.Now.ToString("HH:mm")));
     }
 
-    private static async Task AutoSyncAsync(CancellationToken token)
+    private static async Task AutoSyncAsync(ChannelReader<bool> changes, CancellationToken token)
     {
         try
         {
@@ -164,8 +199,19 @@ internal static class AndroidBluetoothSync
                 });
                 if (address.Length > 0)
                     try { await SynchronizeAsync(address); }
-                    catch (Exception ex) when (ex is not OutOfMemoryException) { }
-                await Task.Delay(TimeSpan.FromSeconds(60), token);
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        if (!token.IsCancellationRequested)
+                            NearbySyncService.SetStatus("À espera do equipamento Bluetooth. A ligação será tentada automaticamente.");
+                    }
+                // A local edit wakes the loop; the timeout also retries disconnected peers and profile changes.
+                using var wake = CancellationTokenSource.CreateLinkedTokenSource(token);
+                wake.CancelAfter(TimeSpan.FromSeconds(15 + Random.Shared.Next(6)));
+                try { await changes.ReadAsync(wake.Token); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+                // Coalesce frequent playback updates into one exchange.
+                await Task.Delay(TimeSpan.FromSeconds(2), token);
+                while (changes.TryRead(out _)) { }
             }
         }
         catch (OperationCanceledException) { }

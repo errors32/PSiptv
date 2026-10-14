@@ -161,6 +161,27 @@ Se aparecer este erro no arranque, os recursos Java do APK e os IDs usados pelo 
 6. No ecrã principal, prima **⋯ → Abrir lista** e escolha a lista guardada.
 7. Para usar outro leitor, prima **Abrir com leitor externo** durante a reprodução, ou ative **Definições → Reprodução → Preferir leitor externo**. Instale primeiro um leitor compatível, por exemplo VLC. Em Windows, selecione-o no diálogo do sistema.
 
+## Sincronização de podcasts por Bluetooth (Android)
+
+Nas **Definições dos podcasts → Sincronização por Bluetooth**, ative a opção em
+ambos os equipamentos, depois de os emparelhar nas definições do Android.
+Abra a mesma lista com o mesmo nome de perfil nos dois e prima **Escolher
+dispositivo e sincronizar** num deles. A escolha fica guardada mesmo que o outro
+equipamento ainda não esteja disponível.
+
+Os podcasts favoritos, episódios ouvidos/por ouvir e posição de reprodução são
+sincronizados nos dois sentidos. Alterações locais desencadeiam uma troca após
+cerca de dois segundos; a aplicação também verifica a ligação a cada 17–22
+segundos, para retomar automaticamente após uma interrupção. O Bluetooth pode
+ser ligado nas definições do Android depois de ativar esta opção na aplicação.
+Ambas as aplicações devem permanecer abertas e o Bluetooth ligado; não é
+necessária uma rede Wi-Fi. Os downloads de áudio não são transferidos.
+
+As alterações mais recentes prevalecem por episódio, e as remoções de favoritos
+e marcações como «por ouvir» também são propagadas. Cada lista/perfil mantém os
+seus dados e equipamento escolhido. A sincronização para ao sair da aplicação
+ou ao desativar a opção.
+
 ## Testes
 
 O projeto de testes é um executável sem dependências adicionais. Usa respostas HTTP simuladas e termina com erro se qualquer verificação falhar.

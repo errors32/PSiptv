@@ -84,6 +84,8 @@ public static class LanguageService
         ["Esta cópia requer uma palavra-passe."] = "This backup requires a password.",
         ["A cópia de segurança está incompleta."] = "The backup is incomplete.",
         ["Sincronização por Bluetooth"] = "Bluetooth synchronization",
+        ["À espera do equipamento Bluetooth. A ligação será tentada automaticamente."] = "Waiting for the Bluetooth device. The connection will be retried automatically.",
+        ["Emparelhe os equipamentos no Android, ative esta opção em ambos, abra a mesma lista com o mesmo nome de perfil e escolha o dispositivo uma vez. Os podcasts favoritos, episódios ouvidos e posição de reprodução sincronizam automaticamente enquanto ambas as aplicações estão abertas, mesmo sem Wi-Fi. Se a ligação cair, a aplicação volta a tentar. Os ficheiros de áudio descarregados ficam em cada equipamento."] = "Pair the devices in Android settings, enable this option on both, open the same playlist with the same profile name and select the device once. Favorite podcasts, played episodes and playback position synchronize automatically while both apps are open, even without Wi-Fi. If the connection drops, the app retries. Downloaded audio files stay on each device.",
         ["Comando remoto por Wi-Fi ou Bluetooth"] = "Remote control over Wi-Fi or Bluetooth",
         ["Permitir controlo por Bluetooth"] = "Allow Bluetooth remote control",
         ["Ajuda"] = "Help",

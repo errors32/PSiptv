@@ -29,7 +29,7 @@ internal sealed class NearbySyncView : ContentView
         };
         Content = Ui.Card(Ui.Stack(Ui.Text("Sincronização por Bluetooth", 20),
             Ui.Text("Ativar neste equipamento"), enabled,
-            Ui.Text("Funciona sem a mesma rede Wi-Fi. Emparelhe os equipamentos no Android, ative esta opção em ambos e abra a mesma lista com o mesmo nome de perfil. Sincroniza favoritos e progresso dos podcasts enquanto as aplicações estão abertas.", 13, true),
+            Ui.Text("Emparelhe os equipamentos no Android, ative esta opção em ambos, abra a mesma lista com o mesmo nome de perfil e escolha o dispositivo uma vez. Os podcasts favoritos, episódios ouvidos e posição de reprodução sincronizam automaticamente enquanto ambas as aplicações estão abertas, mesmo sem Wi-Fi. Se a ligação cair, a aplicação volta a tentar. Os ficheiros de áudio descarregados ficam em cada equipamento.", 13, true),
             status, Ui.Button("Escolher dispositivo e sincronizar", SynchronizeAsync)));
         Loaded += (_, _) => { NearbySyncService.Changed += Refresh; Refresh(); };
         Unloaded += (_, _) => NearbySyncService.Changed -= Refresh;

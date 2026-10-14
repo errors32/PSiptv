@@ -77,11 +77,13 @@ Verifique também seleção de cartões, regresso do leitor ao cartão anterior,
 3. Ative **Sincronização por Bluetooth** em **Sincronização e cópia de segurança** ou nas definições dos podcasts. Autorize o acesso a dispositivos próximos.
 4. Desligue o Wi-Fi num dos equipamentos. Adicione favoritos diferentes e altere progresso/estado ouvido em cada um.
 5. Escolha o outro equipamento e sincronize. Confirme que ambos conservam os favoritos e convergem no estado dos podcasts.
-6. Remova um favorito e sincronize. Volte a sincronizar: a remoção não deve ser revertida.
+6. Sem premir novamente sincronizar, remova um podcast e marque episódios como ouvidos/por ouvir em ambos os equipamentos. Confirme atualização automática em ambos e que a remoção não é revertida.
 7. Mude de perfil numa das aplicações: a troca deve ser recusada. Repita bloqueando a lista durante a transferência.
-8. Interrompa o Bluetooth durante a troca, reative-o e volte a ativar a opção na aplicação; confirme recuperação e ausência de dados parciais.
+8. Interrompa o Bluetooth durante a troca e reative-o, sem mudar a opção na aplicação; confirme recuperação automática e ausência de dados parciais.
+9. Escolha o equipamento com a outra aplicação fechada. Abra-a depois e confirme que a ligação é tentada automaticamente. Edite também no equipamento que recebeu a primeira sincronização.
+10. Passe cada aplicação para segundo plano e confirme que as trocas param; reabra ambas e confirme retoma. Repita ativando a opção antes de ligar o rádio Bluetooth.
 
-A sincronização é opcional, usa RFCOMM seguro e apenas dispositivos emparelhados. Depois de uma ligação manual bem-sucedida, volta a tentar o equipamento escolhido a cada minuto enquanto a aplicação estiver aberta. Não liga o rádio nem emparelha equipamentos automaticamente. Os relógios devem estar acertados: conflitos no mesmo item usam a data da alteração e um desempate determinístico. Os estados de remoção são conservados para impedir que cópias antigas recuperem dados apagados. Equipamentos sem Bluetooth Classic não suportam esta ligação. A integração é Android padrão e não depende da conta Xiaomi nem do serviço proprietário de partilha de ecrã.
+A sincronização é opcional, usa RFCOMM seguro e apenas dispositivos emparelhados. A escolha manual fica guardada antes da primeira tentativa; uma troca bem-sucedida também guarda o remetente no equipamento recetor. Alterações locais desencadeiam uma troca após cerca de dois segundos e a ligação é verificada a cada 17–22 segundos, além do tempo de transferência, enquanto a aplicação estiver aberta. Não liga o rádio nem emparelha equipamentos automaticamente. Os relógios devem estar acertados: conflitos no mesmo item usam a data da alteração e um desempate determinístico. Os estados de remoção são conservados para impedir que cópias antigas recuperem dados apagados. Os downloads de áudio não são transferidos. Equipamentos sem Bluetooth Classic não suportam esta ligação. A integração é Android padrão e não depende da conta Xiaomi nem do serviço proprietário de partilha de ecrã.
 
 ## Backups e espaço
 

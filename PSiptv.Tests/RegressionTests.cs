@@ -207,15 +207,40 @@ internal static class RegressionTests
             await connection;
             await a.SetAsync(account, channelA, true);
             await b.SetAsync(account, new MediaItem("channel-c", "C", "", MediaKind.Channel), true);
-            await Task.WhenAll(
+            var secondFeed = feed with { Id = "podcast:feed:second", Name = "Second feed" };
+            var secondEpisode = episode with { Id = "podcast:episode:second", ParentSeriesId = secondFeed.Id };
+            await a.SetAsync(account, secondFeed, true);
+            await a.SetHeardAsync(account.Id, secondEpisode, true);
+            await b.RecordPodcastAsync(account.Id, episode, 240, 600);
+            Task Exchange() => Task.WhenAll(
                 ProfileSyncProtocol.ExchangeAsync(client.GetStream(), client.GetStream(), "profile", false,
                     () => a.SnapshotAsync(account.Id), async s => { await a.ImportNewerAsync(account.Id, account, s); }, deadline.Token),
                 ProfileSyncProtocol.ExchangeAsync(server.GetStream(), server.GetStream(), "profile", true,
                     () => b.SnapshotAsync(account.Id), async s => { await b.ImportNewerAsync(account.Id, account, s); }, deadline.Token));
+            await Exchange();
             var idsA = (await a.LoadAsync(account.Id)).Select(e => e.Item.Id).Order().ToArray();
             var idsB = (await b.LoadAsync(account.Id)).Select(e => e.Item.Id).Order().ToArray();
             Check(idsA.SequenceEqual(idsB) && idsA.Contains(channelA.Id) && idsA.Contains("channel-c"),
                 "Troca bidirecional completa converge sem perder alterações locais");
+            var syncedA = await a.SnapshotAsync(account.Id);
+            var syncedB = await b.SnapshotAsync(account.Id);
+            Check(syncedB.Entries.Any(e => e.Item.Id == secondFeed.Id) &&
+                syncedA.HeardEpisodes.ContainsKey(secondEpisode.Id) && syncedB.HeardEpisodes.ContainsKey(secondEpisode.Id) &&
+                syncedA.PodcastProgress![episode.Id].Position == 240 && syncedB.PodcastProgress![episode.Id].Position == 240,
+                "Bluetooth sincroniza subscrições, episódios ouvidos e progresso de ambos os equipamentos");
+            await b.SetHeardAsync(account.Id, secondEpisode, false);
+            await a.SetHeardAsync(account.Id, episode, true);
+            await Exchange();
+            syncedA = await a.SnapshotAsync(account.Id);
+            syncedB = await b.SnapshotAsync(account.Id);
+            Check(!syncedA.HeardEpisodes.ContainsKey(secondEpisode.Id) && !syncedB.HeardEpisodes.ContainsKey(secondEpisode.Id) &&
+                syncedA.HeardEpisodes.ContainsKey(episode.Id) && syncedB.HeardEpisodes.ContainsKey(episode.Id) &&
+                !syncedA.PodcastProgress!.ContainsKey(episode.Id) && !syncedB.PodcastProgress!.ContainsKey(episode.Id),
+                "Nova troca Bluetooth propaga por ouvir e conclusão, removendo a posição antiga");
+            await a.SetAsync(account, secondFeed, false);
+            await Exchange();
+            Check(!(await b.LoadAsync(account.Id)).Any(e => e.Item.Id == secondFeed.Id),
+                "Remover podcast propaga-se por Bluetooth nas trocas seguintes");
         }
         finally { listener.Stop(); }
         Console.WriteLine($"\n{passed} regressões e verificações adicionais concluídas.");
