@@ -246,5 +246,6 @@ internal static class RegressionTests
         Console.WriteLine($"\n{passed} regressões e verificações adicionais concluídas.");
         await ConsumptionSyncTests.RunAsync();
         await LargeProfileSyncTests.RunAsync();
+        await OpeningSyncTests.RunAsync();
     }
 }

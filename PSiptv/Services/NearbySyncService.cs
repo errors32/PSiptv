@@ -1,4 +1,5 @@
 using PSiptv.Core;
+using System.Text.Json;
 
 namespace PSiptv.Services;
 
@@ -15,6 +16,31 @@ public static class NearbySyncService
     private static readonly object pendingLock = new();
     public static string LastError => Preferences.Default.Get("profile-sync.bluetooth.last-error", "");
     private static string PendingKey(string scope) => "profile-sync.bluetooth.pending." + scope;
+
+    public static IReadOnlyList<RememberedSyncPeer> RememberedDevices => RememberedPeers(RemoteControlService.CurrentProfileKey);
+    internal static IReadOnlyList<RememberedSyncPeer> RememberedPeers(string profileKey)
+    {
+        if (profileKey.Length == 0) return [];
+        try
+        {
+            return (JsonSerializer.Deserialize<List<RememberedSyncPeer>>(Preferences.Default.Get(
+                "profile-sync.bluetooth.peers." + profileKey, "[]")) ?? [])
+                .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Address))
+                .OrderByDescending(p => p.LastSyncedAt).DistinctBy(p => p.Address, StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+        catch (JsonException) { return []; }
+    }
+    internal static void RememberPeer(string profileKey, string address, string name)
+    {
+        var peers = OpeningSyncSession.Remember(RememberedPeers(profileKey), address, name, DateTimeOffset.UtcNow);
+        Preferences.Default.Set("profile-sync.bluetooth.peers." + profileKey, JsonSerializer.Serialize(peers));
+    }
+    internal static void OnProfileChanged()
+    {
+#if ANDROID
+        PSiptv.AndroidBluetoothSync.OnProfileChanged();
+#endif
+    }
 
     internal static void NotifyConsumptionChanged(string scope)
     {

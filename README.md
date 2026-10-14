@@ -22,6 +22,15 @@ Na primeira abertura de uma lista desbloqueada após iniciar a aplicação, a PS
 
 Em **Sincronização e cópia de segurança** e nas definições dos podcasts pode ativar a sincronização **Bluetooth**, sem exigir a mesma rede Wi-Fi. Instale a mesma versão nos dois equipamentos, emparelhe-os nas definições Android, ative a opção nos dois e abra a mesma lista com o mesmo nome de perfil. Escolha o equipamento uma vez; as seguintes sincronizações ocorrem ao marcar podcasts como ouvidos/por ouvir ou filmes/episódios como vistos/por ver. Sem consultas periódicas. Usa Bluetooth Classic seguro do Android e não sincroniza listas ou credenciais. Consulte [Validação](docs/validation.md) para testes e limitações.
 
+Na versão **1.7.0**, os equipamentos que concluíram uma sincronização ficam
+memorizados por lista/perfil. Ao abrir ou voltar à aplicação depois de a deixar
+em segundo plano, tenta sincronizar com os equipamentos memorizados, mesmo
+sem alterações locais pendentes, com **cinco tentativas no total por abertura**.
+Os que responderem não são repetidos nessa abertura. Se nenhum responder,
+para até à próxima abertura; novas marcações ficam pendentes. Uma sincronização
+manual ou recebida bem-sucedida também permite retomar as marcações automáticas.
+A escolha guardada nas versões anteriores é reutilizada na atualização.
+
 Referência do diretório: [iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html).
 
 ## Aviso legal e responsabilidade
@@ -175,7 +184,9 @@ concluído/por ver desencadeia uma troca em segundo plano, agrupando marcações
 próximas. Atualizações da posição, visitas a podcasts, início de reprodução e
 alterações de favoritos não desencadeiam ligações. Não existem consultas ou
 tentativas periódicas. Se a troca falhar, as alterações ficam guardadas até à
-próxima marcação, reabertura da aplicação ou ativação do rádio Bluetooth.
+próxima marcação ou reabertura da aplicação. Se a campanha de abertura terminar
+sem sucesso, as tentativas automáticas ficam bloqueadas até à próxima abertura
+ou até uma sincronização manual/recebida comprovar a disponibilidade.
 Ambas as aplicações devem permanecer abertas e o Bluetooth ligado; não é
 necessária uma rede Wi-Fi. Os downloads de áudio não são transferidos.
 

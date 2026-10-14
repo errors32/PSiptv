@@ -20,6 +20,7 @@ public static class AppServices
         ActiveAccount = account;
         Preferences.Default.Set("lastAccountId", account.Id);
         FavoritesService.Clear();
+        NearbySyncService.OnProfileChanged();
     }
     public static void UpdateAccount(PlaylistAccount account) { if (ActiveAccount?.Id == account.Id) ActiveAccount = account; }
     public static void ActivateProfile(string profileId)
@@ -28,6 +29,7 @@ public static class AppServices
         SessionVersion++;
         SuspendPlayback();
         FavoritesService.Clear();
+        NearbySyncService.OnProfileChanged();
         _ = TvDiscoveryService.RefreshAsync();
     }
     public static void Lock()
@@ -35,6 +37,7 @@ public static class AppServices
         SessionVersion++;
         ActiveAccount = null;
         FavoritesService.Clear();
+        NearbySyncService.OnProfileChanged();
         Locked?.Invoke();
     }
 }
