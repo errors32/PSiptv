@@ -24,6 +24,13 @@ public sealed class AudioMiniPlayerView : ContentView
         backward = Ui.Button("−15 s", () => AudioPlaybackService.Player?.SeekByAsync(-15) ?? Task.CompletedTask);
         forward = Ui.Button("+30 s", () => AudioPlaybackService.Player?.SeekByAsync(30) ?? Task.CompletedTask);
         var stop = Icon("\uf04d", "Parar e fechar o leitor", AudioPlaybackService.StopAsync);
+        var details = new VerticalStackLayout { Spacing = 4, Children = { title, position } };
+        var open = new TapGestureRecognizer();
+        open.Tapped += async (_, _) => await OpenCurrentAsync();
+        details.GestureRecognizers.Add(open);
+        var heading = new Grid { ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto)] };
+        heading.Add(details);
+        heading.Add(Icon(FaIcons.ArrowUpRightFromSquare, "Voltar ao episódio em reprodução", OpenCurrentAsync), 1);
         var buttons = new Grid
         {
             ColumnDefinitions = new ColumnDefinitionCollection
@@ -37,7 +44,7 @@ public sealed class AudioMiniPlayerView : ContentView
         {
             Margin = new Thickness(8, 4, 8, 8), Padding = 10,
             StrokeShape = new RoundRectangle { CornerRadius = 16 },
-            Content = new VerticalStackLayout { Spacing = 4, Children = { title, position, buttons } }
+            Content = new VerticalStackLayout { Spacing = 4, Children = { heading, buttons } }
         };
         Content.SetDynamicResource(BackgroundColorProperty, "Surface");
         timer = Dispatcher.CreateTimer();
@@ -58,6 +65,15 @@ public sealed class AudioMiniPlayerView : ContentView
     }
 
     private void OnPictureInPictureChanged() => Refresh();
+
+    private async Task OpenCurrentAsync()
+    {
+        Element? ancestor = this;
+        while (ancestor is not null && ancestor is not Page) ancestor = ancestor.Parent;
+        if (ancestor is not Page page) return;
+        try { await AudioPlaybackService.OpenCurrentAsync(page); }
+        catch (Exception ex) { await Ui.ErrorAsync(page, ex); }
+    }
 
     private void Refresh()
     {

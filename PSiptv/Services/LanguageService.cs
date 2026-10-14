@@ -173,6 +173,7 @@ public static class LanguageService
         ["Ocultar episódios ouvidos"] = "Hide played episodes",
         ["Marcar todos os episódios da lista como ouvidos"] = "Mark all episodes in the list as played",
         ["Marcar como ouvido"] = "Mark as played", ["Marcar como por ouvir"] = "Mark as unplayed",
+        ["Voltar ao episódio em reprodução"] = "Return to the current episode",
         ["Descarregar episódio em MP3"] = "Download episode as MP3",
         ["Pretende remover o token usado para atualizar a aplicação?"] = "Remove the token used to update the application?",
         ["Este episódio não é fornecido em MP3. O download em MP3 só está disponível para episódios nesse formato."] =

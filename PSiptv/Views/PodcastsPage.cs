@@ -29,7 +29,7 @@ public sealed class PodcastsPage : LocalizedPage
         Title = "Ordenar por data", ItemsSource = new[] { "Mais recentes", "Mais antigos", "Ordem do feed" }, SelectedIndex = 0
     };
     private readonly Label status = Ui.Text("", 14, true);
-    private readonly CollectionView list = new() { SelectionMode = SelectionMode.Single };
+    private readonly CollectionView list = new() { SelectionMode = SelectionMode.None };
     private IReadOnlyList<MediaItem> items = [];
     private IReadOnlyDictionary<string, PodcastHeardEntry> heard = new Dictionary<string, PodcastHeardEntry>();
     private CancellationTokenSource? loading;
@@ -89,13 +89,14 @@ public sealed class PodcastsPage : LocalizedPage
             });
             var row = new Grid { Padding = 8, ColumnSpacing = 8,
                 ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)] };
-            row.Add(Ui.Stack(name, date, state)); row.Add(toggle, 1); row.Add(download, 2); row.Add(favorite, 3);
+            var details = Ui.Stack(name, date, state);
+            row.Add(details); row.Add(toggle, 1); row.Add(download, 2); row.Add(favorite, 3);
             row.BindingContextChanged += (_, _) =>
             {
                 if (row.BindingContext is not MediaItem item) return;
                 var tracked = IsTrackedEpisode(item);
                 toggle.IsVisible = tracked;
-                SetAction(toggle, heard.ContainsKey(item.Id) ? FaIcons.RotateLeft : FaIcons.Check,
+                SetAction(toggle, heard.ContainsKey(item.Id) ? FaIcons.EarListen : FaIcons.Check,
                     heard.ContainsKey(item.Id) ? "Marcar como por ouvir" : "Marcar como ouvido");
                 download.IsVisible = !item.HasEpisodes && OfflineDownloadPolicy.CanDownload(item);
                 state.Text = item.HasEpisodes ? item.Category : tracked ?
@@ -112,15 +113,13 @@ public sealed class PodcastsPage : LocalizedPage
                     ? LanguageService.Format("Publicado em {0}", published.ToLocalTime().ToString("dd/MM/yyyy"))
                     : LanguageService.Text("Data indisponível");
             };
-            return Ui.FocusableCard(row, value => list.SelectedItem = value);
+            return Ui.FocusableCard(row, async value =>
+            {
+                if (value is not MediaItem item) return;
+                try { await PodcastService.OpenAsync(this, item); }
+                catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
+            }, tapTarget: details);
         });
-        list.SelectionChanged += async (_, e) =>
-        {
-            if (e.CurrentSelection.FirstOrDefault() is not MediaItem item) return;
-            list.SelectedItem = null;
-            try { await PodcastService.OpenAsync(this, item); }
-            catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
-        };
         search.SearchButtonPressed += async (_, _) => await LoadAsync();
         search.TextChanged += (_, _) => { if (podcast is not null || favoritesOnly || continuing) Show(); };
         dateOrder.SelectedIndexChanged += (_, _) => Show();

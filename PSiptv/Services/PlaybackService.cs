@@ -8,6 +8,7 @@ public static class PlaybackService
     public static async Task PlayAsync(Page owner, MediaItem item, IReadOnlyList<MediaItem>? episodes = null, double resume = 0)
     {
         if (!await CatalogOptionsService.AuthorizePlaybackAsync(owner, item)) return;
+        if (AudioPlaybackService.IsAudio(item) && await AudioPlaybackService.OpenCurrentAsync(owner, item)) return;
         if (!AudioPlaybackService.IsAudio(item) && !DeviceProfile.IsAutomotive && Preferences.Default.Get("externalPlayer", false))
         {
             if (!ExternalPlayerService.IsConfigured && !await ExternalPlayerService.ChooseAsync(owner))

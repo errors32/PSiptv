@@ -13,6 +13,7 @@ namespace PSiptv.Views;
 public sealed class PlaybackView : ContentView
 {
     public bool RetainAcrossNavigation { get; internal set; }
+    internal PlayerPage? OwnerPage { get; set; }
     public event Action? PlaybackStopping;
     public bool CanSeek =>
 #if ANDROID || WINDOWS

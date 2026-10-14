@@ -39,6 +39,7 @@ internal static class FaIcons
     public const string Music = "\uf001";
     public const string Radio = "\uf8d7";
     public const string Podcast = "\uf2ce";
+    public const string EarListen = "\uf2a2";
     public const string Check = "\uf00c";
     public const string CheckDouble = "\uf560";
     public const string Eye = "\uf06e";

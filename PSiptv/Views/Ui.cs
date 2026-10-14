@@ -109,7 +109,7 @@ public static class Ui
         return border;
     }
 
-    public static TvFocusableBorder FocusableCard(View content, Action<object?> activate)
+    public static TvFocusableBorder FocusableCard(View content, Action<object?> activate, View? tapTarget = null)
     {
         var border = new TvFocusableBorder
         {
@@ -123,7 +123,7 @@ public static class Ui
         border.Unfocused += (_, _) => border.SetFocusHighlight(false);
         if (!IsTelevision)
         {
-            border.Behaviors.Add(new TouchBehavior
+            (tapTarget ?? border).Behaviors.Add(new TouchBehavior
             {
                 LongPressCommand = new Command(async () => await border.ToggleFavoriteAsync())
             });
@@ -131,11 +131,11 @@ public static class Ui
         // WinUI does not consistently promote a tap on the card's nested
         // controls to CollectionView selection. Activate the card explicitly
         // on Windows, as we already do for remote/large-control layouts.
-        if (UsesLargeControls || DeviceInfo.Platform == DevicePlatform.WinUI)
+        if (tapTarget is not null || UsesLargeControls || DeviceInfo.Platform == DevicePlatform.WinUI)
         {
             var tap = new TapGestureRecognizer();
             tap.Tapped += (_, _) => border.ActivateFromRemote();
-            border.GestureRecognizers.Add(tap);
+            (tapTarget ?? border).GestureRecognizers.Add(tap);
         }
         return border;
     }

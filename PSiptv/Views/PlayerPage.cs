@@ -42,6 +42,7 @@ public sealed class PlayerPage : LocalizedPage
         fullscreenKeyHandler = HandleFullscreenTvKey;
 #endif
         player = new PlaybackView(recordHistory: !transient, requireActiveAccount: !transient);
+        player.OwnerPage = this;
         current = item; queue = episodes ?? []; this.resume = resume;
         player.PlaybackStopping += () => { countdown?.Cancel(); sleepTimer?.Cancel(); };
         liveChannel = !transient && item.Kind == MediaKind.Channel && !item.IsCatchup;
@@ -393,7 +394,14 @@ public sealed class PlayerPage : LocalizedPage
         player.ToggleFullscreen = () => SetFullscreen(!fullscreen);
         player.ControlsVisibilityChanged += _ => UpdateFullscreenOverlay();
         SizeChanged += (_, _) => Adapt();
-        Loaded += (_, _) => Adapt();
+        Loaded += (_, _) =>
+        {
+            PictureInPictureService.Changed -= Adapt;
+            PictureInPictureService.Changed += Adapt;
+            AppServices.Locked -= Stop;
+            AppServices.Locked += Stop;
+            Adapt();
+        };
         PictureInPictureService.Changed += Adapt;
         AppServices.Locked += Stop;
         Unloaded += (_, _) =>

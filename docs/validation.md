@@ -68,6 +68,8 @@ Verifique também seleção de cartões, regresso do leitor ao cartão anterior,
 - Num fornecedor de teste com resolução de URLs atrasada, escolha A e depois B; faça a resposta de A chegar depois de B. B deve continuar a reproduzir. Repita fazendo A falhar.
 - Saia do leitor enquanto o URL é resolvido. O pedido deve cancelar e nenhuma reprodução deve começar depois.
 - Reproduza rádio/podcast, navegue para outra página e regresse: áudio e posição devem manter-se. Troque para vídeo e confirme que o áudio anterior para.
+- Num podcast em reprodução, volte à lista e toque no título/tempo da barra ou no botão de regresso: deve reabrir o mesmo leitor, sem reiniciar o áudio nem alterar a posição. Repita com o áudio pausado e com o leitor ainda na pilha de navegação. Abrir o mesmo episódio pela lista deve reutilizar o leitor; abrir outro deve substituir a reprodução.
+- Na lista de episódios de um podcast favorito, toque no visto: deve marcar como ouvido e sair da lista por ouvir, sem abrir o leitor. Mostre todos e toque no ícone de ouvido para voltar a marcar como por ouvir; o episódio deve reaparecer no filtro por ouvir. Repita com áudio ativo, confirmando que este não muda, e valide também os botões de favorito/download. No telefone, Windows e TV, só tocar no título/detalhes ou ativar o cartão pelo comando deve abrir o episódio.
 - Teste Home/retoma, bloqueio/desbloqueio e picture-in-picture: a reprodução deve seguir o comportamento definido para cada modo sem duplicar áudio.
 
 ## Bluetooth sem rede comum
