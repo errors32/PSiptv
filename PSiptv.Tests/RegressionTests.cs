@@ -245,5 +245,6 @@ internal static class RegressionTests
         finally { listener.Stop(); }
         Console.WriteLine($"\n{passed} regressões e verificações adicionais concluídas.");
         await ConsumptionSyncTests.RunAsync();
+        await LargeProfileSyncTests.RunAsync();
     }
 }

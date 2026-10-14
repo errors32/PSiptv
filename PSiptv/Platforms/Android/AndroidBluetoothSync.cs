@@ -199,18 +199,23 @@ internal static class AndroidBluetoothSync
             if (selection.Version != AppServices.SessionVersion || selection.Key != RemoteControlService.CurrentProfileKey)
                 throw new InvalidOperationException("O perfil mudou durante a sincronização.");
             if (profileKey.Length == 0) throw new InvalidOperationException("Abra uma lista e selecione o perfil antes de sincronizar.");
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-            timeout.CancelAfter(TimeSpan.FromSeconds(30));
             using var device = Adapter!.GetRemoteDevice(address);
             if (device?.BondState != Bond.Bonded) throw new InvalidOperationException("Emparelhe os equipamentos nas definições Bluetooth do Android.");
             using var socket = device.CreateRfcommSocketToServiceRecord(ServiceId)
                 ?? throw new InvalidOperationException("O dispositivo não suporta esta ligação Bluetooth.");
-            using var cancellation = timeout.Token.Register(() => Close(socket));
-            NearbySyncService.SetStatus("A sincronizar por Bluetooth…");
-            await Task.Run(socket.Connect, timeout.Token);
+            NearbySyncService.SetStatus("A ligar ao equipamento por Bluetooth…");
+            // This deadline applies only to Connect, not to the subsequent snapshot exchange.
+            using (var connection = CancellationTokenSource.CreateLinkedTokenSource(token))
+            using (var cancellation = connection.Token.Register(() => Close(socket)))
+            {
+                connection.CancelAfter(TimeSpan.FromSeconds(30));
+                try { await Task.Run(socket.Connect, connection.Token); }
+                catch (Exception ex) when (ex is not OutOfMemoryException && connection.IsCancellationRequested && !token.IsCancellationRequested)
+                { throw new TimeoutException("A ligação Bluetooth não foi estabelecida em 30 segundos.", ex); }
+            }
             if (profileKey != RemoteControlService.CurrentProfileKey) return;
             // Android stream implementations can block: keep transport I/O off the UI thread.
-            await Task.Run(() => ExchangeAsync(socket, false, timeout.Token), timeout.Token);
+            await Task.Run(() => ExchangeAsync(socket, false, token), token);
         }
         finally { clientGate.Release(); }
     }
@@ -223,33 +228,58 @@ internal static class AndroidBluetoothSync
                 Scope: UserProfileService.Scope(AppServices.ActiveAccount?.Id ?? "")));
         if (context.Account is null || context.Key.Length == 0) throw new InvalidOperationException("Abra uma lista antes de sincronizar.");
         var pending = await MainThread.InvokeOnMainThreadAsync(() => NearbySyncService.Pending(context.Scope));
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        using var timeout = new SyncTransferDeadline(token);
         using var cancellation = timeout.Token.Register(() => Close(socket));
+        var lastProgress = new ProfileSyncProgress(ProfileSyncPhase.Preparing);
+        var lastReport = 0L;
+        void Progress(ProfileSyncProgress progress)
+        {
+            timeout.Touch();
+            var changedPhase = lastProgress.Phase != progress.Phase;
+            lastProgress = progress;
+            var now = Environment.TickCount64;
+            if (!changedPhase && now - lastReport < 500 && progress.Bytes != progress.TotalBytes) return;
+            lastReport = now;
+            NearbySyncService.SetStatus(ProgressText(progress));
+        }
         void CheckContext()
         {
             timeout.Token.ThrowIfCancellationRequested();
             if (context.Version != AppServices.SessionVersion || context.Key != RemoteControlService.CurrentProfileKey)
                 throw new InvalidOperationException("O perfil mudou durante a sincronização.");
         }
-        await ProfileSyncProtocol.ExchangeAsync(socket.InputStream!, socket.OutputStream!, context.Key, server,
-            () => MainThread.InvokeOnMainThreadAsync(async () =>
-            {
-                CheckContext();
-                var value = await FavoritesService.SnapshotAsync();
-                var library = await ExperienceService.LoadAsync(context.Account.Id, context.Profile);
-                CheckContext();
-                return value! with { ViewingStates = ViewingStateSync.Snapshot(library) };
-            }),
-            snapshot => MainThread.InvokeOnMainThreadAsync(async () =>
-            {
-                CheckContext();
-                await FavoritesService.ImportNewerAsync(context.Account, context.Profile, snapshot with { ViewingStates = null });
-                CheckContext();
-                if (snapshot.ViewingStates is { } states)
-                    await ExperienceService.ImportViewingStatesAsync(context.Account.Id, context.Profile, states);
-                CheckContext();
-            }), timeout.Token);
+        try
+        {
+            await ProfileSyncProtocol.ExchangeAsync(socket.InputStream!, socket.OutputStream!, context.Key, server,
+                () => MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    CheckContext();
+                    var value = await FavoritesService.SnapshotAsync();
+                    var library = await ExperienceService.LoadAsync(context.Account.Id, context.Profile);
+                    CheckContext();
+                    return value! with { ViewingStates = ViewingStateSync.Snapshot(library) };
+                }),
+                snapshot => MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    CheckContext();
+                    await FavoritesService.ImportNewerAsync(context.Account, context.Profile, snapshot with { ViewingStates = null });
+                    CheckContext();
+                    if (snapshot.ViewingStates is { } states)
+                        await ExperienceService.ImportViewingStatesAsync(context.Account.Id, context.Profile, states);
+                    CheckContext();
+                }), timeout.Token, Progress);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException && timeout.TimedOut)
+        {
+            throw new TimeoutException((timeout.TotalExpired
+                ? "A sincronização Bluetooth excedeu o limite total de 5 minutos. "
+                : "A sincronização Bluetooth ficou 90 segundos sem progresso. ") + ProgressText(lastProgress), ex);
+        }
+        catch (Exception ex) when (ex is IOException || ex.GetType().FullName?.StartsWith("Java.IO.", StringComparison.Ordinal) == true)
+        {
+            if (token.IsCancellationRequested) throw new OperationCanceledException(token);
+            throw new IOException("Ligação interrompida. " + ProgressText(lastProgress) + " Detalhe: " + ex.Message, ex);
+        }
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
             CheckContext();
@@ -259,8 +289,22 @@ internal static class AndroidBluetoothSync
                 Preferences.Default.Set("profile-sync.bluetooth.peer." + context.Key, address);
             NearbySyncService.Confirm(context.Scope, pending);
         });
-        await Task.Delay(TimeSpan.FromMilliseconds(150), timeout.Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(150), token);
         NearbySyncService.SetStatus(LanguageService.Format("Sincronização Bluetooth concluída · {0}", DateTimeOffset.Now.ToString("HH:mm")));
+    }
+
+    private static string ProgressText(ProfileSyncProgress progress)
+    {
+        var phase = progress.Phase switch
+        {
+            ProfileSyncPhase.Preparing => "A preparar os dados para sincronizar…",
+            ProfileSyncPhase.Sending => "A enviar dados por Bluetooth…",
+            ProfileSyncPhase.Receiving => "A receber dados por Bluetooth…",
+            ProfileSyncPhase.Saving => "A guardar os dados recebidos…",
+            _ => "A confirmar a sincronização Bluetooth…"
+        };
+        return LanguageService.Text(phase) + (progress.TotalBytes > 4
+            ? $" · {(progress.Bytes + 1023) / 1024}/{(progress.TotalBytes + 1023) / 1024} KB" : "");
     }
 
     private static async Task SyncPendingAsync(CancellationToken token)
@@ -286,5 +330,5 @@ internal static class AndroidBluetoothSync
     }
 
     private static void Close(BluetoothSocket socket)
-    { try { socket.Close(); } catch (Java.IO.IOException) { } }
+    { try { socket.Close(); } catch (Java.IO.IOException) { } catch (ObjectDisposedException) { } }
 }

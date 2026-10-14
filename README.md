@@ -185,8 +185,14 @@ e progresso. Cada lista/perfil mantém os
 seus dados e equipamento escolhido. A sincronização para ao sair da aplicação
 ou ao desativar a opção.
 
-A versão 1.6.9 usa confirmação de receção antes de fechar a ligação. Atualize
-ambos os equipamentos: versões com protocolos diferentes são recusadas. A
+A versão 1.6.10 usa o protocolo v3: snapshots comprimidos, leitura/escrita em
+blocos de 16 KB e confirmação de receção antes de fechar a ligação. A ligação
+inicial tem um prazo separado de 30 segundos; a troca permite até 5 minutos,
+com um limite de 90 segundos sem progresso, renovado pelos dados transferidos.
+O limite de 8 MB aplica-se também aos dados descomprimidos. A página mostra
+a fase e os KB transferidos; timeouts são identificados mesmo quando o Android
+devolve «Broken pipe» ao fechar o socket. Atualize ambos os equipamentos:
+versões com protocolos diferentes são recusadas. A
 página de sincronização conserva o último erro, distinguindo lista/perfil,
 versão, interrupção da ligação e falha de armazenamento.
 

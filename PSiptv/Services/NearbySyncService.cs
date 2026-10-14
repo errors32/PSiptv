@@ -76,6 +76,7 @@ public static class NearbySyncService
     internal static string ErrorText(Exception ex)
     {
         if (ex is ProfileSyncException || ex is InvalidOperationException) return ex.Message;
+        if (ex is TimeoutException) return ex.Message;
         if (ex is OperationCanceledException)
             return "A sincronização Bluetooth excedeu o tempo disponível ou foi interrompida. Confirme que ambas as aplicações estão abertas.";
         if (ex is EndOfStreamException)
