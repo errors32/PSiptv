@@ -16,7 +16,9 @@ public sealed class PodcastsPage : LocalizedPage
     private DateTimeOffset? lastVisit;
     private DateTimeOffset openedAt;
     private string? scrollAnchor;
+    private int firstVisibleIndex;
     private readonly Dictionary<string, (int New, int Unplayed)> feedCounts = [];
+    private readonly Dictionary<string, IReadOnlyList<MediaItem>> feedEpisodes = [];
     private DateTimeOffset? renderedVersion;
     private int countsRevision;
     private int renderedCountsRevision;
@@ -45,6 +47,7 @@ public sealed class PodcastsPage : LocalizedPage
         list.RemainingItemsThresholdReached += (_, _) => AppendPage();
         list.Scrolled += (_, e) =>
         {
+            firstVisibleIndex = e.FirstVisibleItemIndex;
             if (e.FirstVisibleItemIndex >= 0 && e.FirstVisibleItemIndex < displayed.Count)
                 scrollAnchor = displayed[e.FirstVisibleItemIndex].Id;
         };
@@ -70,6 +73,7 @@ public sealed class PodcastsPage : LocalizedPage
         list.EmptyView = Ui.Text("Sem podcasts para mostrar.", 16, true);
         list.ItemTemplate = new DataTemplate(() =>
         {
+            var cover = new LogoImage { WidthRequest = 64, HeightRequest = 64, Aspect = Aspect.AspectFit, VerticalOptions = LayoutOptions.Center };
             var name = Ui.Text("", 16); name.MaxLines = 3;
             name.SetBinding(Label.TextProperty, nameof(MediaItem.Name));
             var state = Ui.Text("", 12, true);
@@ -89,7 +93,8 @@ public sealed class PodcastsPage : LocalizedPage
             });
             var row = new Grid { Padding = 8, ColumnSpacing = 8,
                 ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)] };
-            var details = Ui.Stack(name, date, state);
+            var details = new Grid { ColumnSpacing = 10, ColumnDefinitions = [new(new GridLength(64)), new(GridLength.Star)] };
+            details.Add(cover); details.Add(Ui.Stack(name, date, state), 1);
             row.Add(details); row.Add(toggle, 1); row.Add(download, 2); row.Add(favorite, 3);
             row.BindingContextChanged += (_, _) =>
             {
@@ -204,7 +209,7 @@ public sealed class PodcastsPage : LocalizedPage
                 var shown = await PodcastCacheService.ReadAsync(podcast.Url, token);
                 await FavoritesService.VisitPodcastAsync(podcast.Id, shown?.FetchedAt ?? openedAt);
             }
-            if (favoritesOnly) await LoadFeedCountsAsync(token, session);
+            if (podcast is null && !continuing) await LoadFeedCountsAsync(token, session);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception ex) { status.Text = items.Count > 0 ? LanguageService.Text("A mostrar episódios guardados. Sem atualização de rede.") :
@@ -217,6 +222,7 @@ public sealed class PodcastsPage : LocalizedPage
         favoriteIds = snapshot?.Entries.Select(e => e.Item.Id).ToHashSet() ?? [];
         if (favoritesOnly) items = FavoritesService.Items.Where(PodcastFeed.IsPodcast).ToArray();
         if (continuing) items = ContinuingItems();
+        UpdateFeedCounts();
         Show();
     }
     private void Show()
@@ -232,7 +238,7 @@ public sealed class PodcastsPage : LocalizedPage
         var anchor = scrollAnchor;
         displayed.Clear();
         foreach (var item in page) displayed.Add(item);
-        if (anchor is not null && displayed.FirstOrDefault(e => e.Id == anchor) is { } target)
+        if ((podcast is not null || continuing || firstVisibleIndex > 0) && anchor is not null && displayed.FirstOrDefault(e => e.Id == anchor) is { } target)
             Dispatcher.Dispatch(() => list.ScrollTo(target, position: ScrollToPosition.Start, animate: false));
         status.Text = LanguageService.Format("{0} episódios apresentados · {1} no total", displayed.Count, visible.Count);
     }
@@ -247,23 +253,29 @@ public sealed class PodcastsPage : LocalizedPage
         .Values.Where(p => PodcastPolicy.ResumePosition(p, snapshot?.HeardEpisodes.ContainsKey(p.Item.Id) == true) > 0)
         .OrderByDescending(p => p.UpdatedAt).Select(p => p.Item).ToArray();
 
-    private async Task LoadFeedCountsAsync(CancellationToken token, int session)
-    {
-        foreach (var feed in items.Where(e => e.HasEpisodes).ToArray())
+    private Task LoadFeedCountsAsync(CancellationToken token, int session) => PodcastListingService.LoadAsync(items,
+        (feed, episodes) =>
         {
-            try
-            {
-                var episodes = await PodcastService.EpisodesAsync(feed, token);
-                if (token.IsCancellationRequested || session != AppServices.SessionVersion) return;
-                var previous = VisitFor(feed.Id);
-                feedCounts[feed.Id] = (episodes.Count(e => PodcastPolicy.IsNew(e, previous, DateTimeOffset.UtcNow)),
-                    episodes.Count(e => !heard.ContainsKey(e.Id)));
-                countsRevision++;
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+            if (!token.IsCancellationRequested && session == AppServices.SessionVersion) feedEpisodes[feed.Id] = episodes;
+        },
+        () =>
+        {
+            if (token.IsCancellationRequested || session != AppServices.SessionVersion) return;
+            UpdateFeedCounts();
+            Show();
+        }, token);
+
+    private void UpdateFeedCounts()
+    {
+        foreach (var feed in items.Where(i => i.HasEpisodes))
+        {
+            if (!feedEpisodes.TryGetValue(feed.Id, out var episodes)) continue;
+            var counts = (episodes.Count(e => PodcastPolicy.IsNew(e, VisitFor(feed.Id), DateTimeOffset.UtcNow)),
+                episodes.Count(e => !heard.ContainsKey(e.Id)));
+            if (feedCounts.TryGetValue(feed.Id, out var previous) && previous == counts) continue;
+            feedCounts[feed.Id] = counts;
+            countsRevision++;
         }
-        if (!token.IsCancellationRequested && session == AppServices.SessionVersion) Show();
     }
 
     private DateTimeOffset? VisitFor(string id) => snapshot?.PodcastVisits is { } visits && visits.TryGetValue(id, out var date) ? date : null;
@@ -274,8 +286,9 @@ public sealed class PodcastsPage : LocalizedPage
         var filtered = items.Where(item => (podcast is null && !favoritesOnly && !continuing ||
             item.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)) &&
             (showAll || item.HasEpisodes || !heard.ContainsKey(item.Id)));
-        return dateOrder.IsVisible && dateOrder.SelectedIndex is 0 or 1
+        var dated = dateOrder.IsVisible && dateOrder.SelectedIndex is 0 or 1
             ? PodcastFeed.OrderByDate(filtered, dateOrder.SelectedIndex == 0) : filtered.ToArray();
+        return PodcastFeed.OrderByUnplayed(dated, feedEpisodes, heard);
     }
 
     private bool IsTrackedEpisode(MediaItem item) => !item.HasEpisodes &&

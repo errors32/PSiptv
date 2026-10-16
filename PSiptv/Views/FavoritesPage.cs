@@ -9,6 +9,10 @@ public sealed class FavoritesPage : LocalizedPage
     private readonly SearchBar search = new() { Placeholder = "Pesquisar favoritos" };
     private readonly Picker kind = new() { ItemsSource = new[] { "Todos", "Canais", "Rádios", "Filmes", "Séries e episódios", "Podcasts" }, SelectedIndex = 0 };
     private readonly Label count = Ui.Text("", 13, true);
+    private readonly Dictionary<string, IReadOnlyList<MediaItem>> feedEpisodes = [];
+    private IReadOnlyDictionary<string, PodcastHeardEntry> heard = new Dictionary<string, PodcastHeardEntry>();
+    private CancellationTokenSource? loading;
+    private bool active;
 
     public FavoritesPage()
     {
@@ -46,12 +50,35 @@ public sealed class FavoritesPage : LocalizedPage
 
     protected override void OnAppearing()
     {
-        base.OnAppearing(); FavoritesService.Changed += Refresh; Refresh();
+        base.OnAppearing(); active = true; FavoritesService.Changed += OnFavoritesChanged; OnFavoritesChanged();
     }
     protected override void OnDisappearing()
     {
-        FavoritesService.Changed -= Refresh; base.OnDisappearing();
+        active = false; FavoritesService.Changed -= OnFavoritesChanged; loading?.Cancel(); base.OnDisappearing();
     }
+    private void OnFavoritesChanged() => Dispatcher.Dispatch(async () =>
+    {
+        if (!active) return;
+        loading?.Cancel(); loading?.Dispose(); loading = new();
+        var token = loading.Token;
+        var session = AppServices.SessionVersion;
+        try
+        {
+            var snapshot = await FavoritesService.SnapshotAsync();
+            if (token.IsCancellationRequested || session != AppServices.SessionVersion) return;
+            heard = snapshot?.HeardEpisodes ?? new Dictionary<string, PodcastHeardEntry>();
+            Refresh();
+            await PodcastListingService.LoadAsync(FavoritesService.Items,
+                (feed, episodes) =>
+                {
+                    if (!token.IsCancellationRequested && session == AppServices.SessionVersion) feedEpisodes[feed.Id] = episodes;
+                },
+                () => { if (!token.IsCancellationRequested && session == AppServices.SessionVersion) Refresh(); }, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+    });
+
     private void Refresh()
     {
         var query = search.Text?.Trim() ?? "";
@@ -65,7 +92,7 @@ public sealed class FavoritesPage : LocalizedPage
                 _ => true
             })
             && i.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).OrderBy(i => i.Name).ToList();
-        items.ItemsSource = result;
+        items.ItemsSource = PodcastFeed.OrderByUnplayed(result, feedEpisodes, heard);
         count.Text = LanguageService.Format("{0} favoritos · {1}", result.Count,
             AppServices.ActiveAccount?.Name ?? LanguageService.Text("Abra uma lista"));
     }

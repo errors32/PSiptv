@@ -758,6 +758,7 @@ options.ParentalEnabled = true;
 options.Custom.Add(new() { Name = "Protected shows", Kind = MediaKind.Series, Items = ["2:show1"] });
 options.Locked.Add(CatalogPreferences.CategoryKey(MediaKind.Series, "Protected shows"));
 Check(options.IsLocked(new("episode1", "Episode", "Drama", MediaKind.Series, "https://example.test/ep", ParentSeriesId: "show1")), "Episódios herdam bloqueio de séries em categorias personalizadas");
+PodcastListingTests.Run(Check);
 ExperienceTests.Run(Check);
 await BluetoothRemoteTests.RunAsync(Check);
 RemoteChannelListTests.Run(Check);

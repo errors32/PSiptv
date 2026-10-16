@@ -45,6 +45,21 @@ public static class PodcastFeed
         return result.DistinctBy(e => e.Id).ToArray();
     }
 
+    public static IReadOnlyList<MediaItem> OrderByUnplayed(IEnumerable<MediaItem> items,
+        IReadOnlyDictionary<string, IReadOnlyList<MediaItem>> episodes,
+        IReadOnlyDictionary<string, PodcastHeardEntry> heard)
+    {
+        var result = items.ToArray();
+        bool IsFeed(MediaItem item) => IsPodcast(item) && item.HasEpisodes;
+        var ordered = result.Where(IsFeed).OrderByDescending(feed => episodes.TryGetValue(feed.Id, out var feedEpisodes)
+            ? feedEpisodes.DistinctBy(e => e.Id).Count(e => !heard.ContainsKey(e.Id)) : -1).ToArray();
+        // Preserve episode date order and the positions of unrelated favorite content.
+        var next = 0;
+        for (var index = 0; index < result.Length; index++)
+            if (IsFeed(result[index])) result[index] = ordered[next++];
+        return result;
+    }
+
     private static DateTimeOffset? PublicationDate(string value)
     {
         // RSS commonly uses an RFC 822 numeric offset without a colon.

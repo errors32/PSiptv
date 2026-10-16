@@ -27,7 +27,7 @@ public static class PodcastService
             var name = Text("collectionName");
             if (name.Length == 0) continue;
             result.Add(new(PodcastFeed.Id(feed), name, Text("artistName"), MediaKind.Podcast,
-                feed, Text("artworkUrl600"), HasEpisodes: true));
+                feed, new[] { Text("artworkUrl600"), Text("artworkUrl100"), Text("artworkUrl60") }.FirstOrDefault(art => art.Length > 0) ?? "", HasEpisodes: true));
         }
         var items = result.DistinctBy(e => e.Id).ToArray();
         await PodcastCacheService.SaveAsync(SearchCacheKey(query), items, token);
