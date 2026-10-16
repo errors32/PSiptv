@@ -2,7 +2,7 @@ using System.Threading.Channels;
 
 namespace PSiptv.Core;
 
-/// <summary>Waits for an explicit consumption/connection event; never polls or retries on a timer.</summary>
+/// <summary>One attempt per consumption event (coalescing batches); failures never schedule retries.</summary>
 public sealed class ConsumptionSyncWorker(TimeSpan? debounce = null)
 {
     private readonly Channel<bool> requests = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
@@ -19,7 +19,14 @@ public sealed class ConsumptionSyncWorker(TimeSpan? debounce = null)
                 await requests.Reader.ReadAsync(token);
                 await Task.Delay(debounce ?? TimeSpan.FromMilliseconds(500), token);
                 while (requests.Reader.TryRead(out _)) { }
-                await synchronize();
+                try { await synchronize(); }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    // Discard this attempt. Keep listening so the next consumed
+                    // programme can initiate a fresh attempt after an offline peer.
+                    System.Diagnostics.Debug.WriteLine(ex);
+                }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }

@@ -47,7 +47,7 @@ public static class NearbySyncService
         if (!Enabled) return;
         lock (pendingLock) Preferences.Default.Set(PendingKey(scope), Guid.NewGuid().ToString("N"));
 #if ANDROID
-        PSiptv.AndroidBluetoothSync.RequestSync();
+        PSiptv.AndroidBluetoothSync.RequestSync(scope);
 #endif
     }
 

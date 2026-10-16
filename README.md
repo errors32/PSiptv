@@ -27,9 +27,19 @@ memorizados por lista/perfil. Ao abrir ou voltar à aplicação depois de a deix
 em segundo plano, tenta sincronizar com os equipamentos memorizados, mesmo
 sem alterações locais pendentes, com **cinco tentativas no total por abertura**.
 Os que responderem não são repetidos nessa abertura. Se nenhum responder,
-para até à próxima abertura; novas marcações ficam pendentes. Uma sincronização
-manual ou recebida bem-sucedida também permite retomar as marcações automáticas.
+para até à próxima abertura. Desde a **1.7.2**, cada nova conclusão ou marcação
+de conteúdo visto/ouvido permite uma tentativa independente com o equipamento
+conhecido, mesmo que a campanha de abertura tenha falhado. Se não responder,
+guarda as alterações e só volta a tentar na próxima marcação, sem repetições
+periódicas. Um podcast pode iniciar essa tentativa ao terminar em segundo plano.
 A escolha guardada nas versões anteriores é reutilizada na atualização.
+
+No Android, a **1.7.2** publica a reprodução do leitor integrado nos controlos
+multimédia do sistema: título, capa, estado, pausa/retoma, paragem e posição
+quando o conteúdo permite procurar. Esta integração destina-se também ao
+Centro de Controlo, HyperIsland e ecrã bloqueado do HyperOS 3. A janela de vídeo
+picture-in-picture inclui pausa/retoma. A apresentação depende do equipamento
+e requer validação física.
 
 Referência do diretório: [iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html).
 

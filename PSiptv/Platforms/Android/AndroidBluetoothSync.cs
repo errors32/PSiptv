@@ -15,11 +15,14 @@ internal static class AndroidBluetoothSync
     private static CancellationTokenSource? lifetime;
     private static BluetoothServerSocket? listener;
     private static ConsumptionSyncWorker? pendingChanges;
+    private static CancellationTokenSource? consumptionLifetime;
     private static Task? listenerTask;
     private static BluetoothStateReceiver? receiver;
     private static bool foreground;
     private static OpeningSyncSession? opening;
     private static CancellationTokenSource? openingCancellation;
+
+    static AndroidBluetoothSync() => AppServices.Locked += StopConsumptionSync;
 
     internal static void BeginOpening()
     {
@@ -32,6 +35,7 @@ internal static class AndroidBluetoothSync
     }
     internal static void OnProfileChanged()
     {
+        StopConsumptionSync();
         lock (sync) openingCancellation?.Cancel();
         TryStartOpeningSync();
     }
@@ -51,7 +55,7 @@ internal static class AndroidBluetoothSync
         await Permissions.RequestAsync<ConnectPermission>() == PermissionStatus.Granted;
 
     internal static void Resume() { foreground = true; Start(); TryStartOpeningSync(); }
-    internal static void Pause() { foreground = false; Stop(); }
+    internal static void Pause() { foreground = false; Stop(stopConsumption: false); }
 
     internal static void Start()
     {
@@ -60,22 +64,19 @@ internal static class AndroidBluetoothSync
             if (!foreground || !NearbySyncService.Enabled || !HasPermission || lifetime is not null) return;
             lifetime = new();
             var token = lifetime.Token;
-            var changes = new ConsumptionSyncWorker();
-            pendingChanges = changes;
             try { RegisterReceiver(); }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             { Stop(); NearbySyncService.ReportError(ex); return; }
             StartListener(token);
-            _ = changes.RunAsync(() => SyncPendingAsync(token), token);
         }
         TryStartOpeningSync();
     }
 
-    internal static void Stop()
+    internal static void Stop(bool stopConsumption = true)
     {
+        if (stopConsumption) StopConsumptionSync();
         lock (sync)
         {
-            pendingChanges = null;
             openingCancellation?.Cancel();
             if (receiver is { } registered)
             {
@@ -93,14 +94,35 @@ internal static class AndroidBluetoothSync
         }
     }
 
-    internal static void RequestSync()
+    internal static void RequestSync(string scope)
     {
-        Start();
-        TryStartOpeningSync();
         lock (sync)
         {
-            if (lifetime is { } current) StartListener(current.Token);
+            if (!NearbySyncService.Enabled || !HasPermission || Adapter?.IsEnabled != true) return;
+            if (AppServices.ActiveAccount is not { } account || UserProfileService.Scope(account.Id) != scope) return;
+            // A consumption event gets its own single attempt, even if the opening
+            // campaign failed or the activity is paused while a podcast plays.
+            openingCancellation?.Cancel();
+            if (pendingChanges is null)
+            {
+                consumptionLifetime = new CancellationTokenSource();
+                var token = consumptionLifetime.Token;
+                var changes = new ConsumptionSyncWorker();
+                pendingChanges = changes;
+                _ = changes.RunAsync(() => SyncPendingAsync(token), token);
+            }
             pendingChanges?.Request();
+        }
+    }
+
+    private static void StopConsumptionSync()
+    {
+        lock (sync)
+        {
+            pendingChanges = null;
+            consumptionLifetime?.Cancel();
+            consumptionLifetime?.Dispose();
+            consumptionLifetime = null;
         }
     }
 
@@ -169,8 +191,6 @@ internal static class AndroidBluetoothSync
             lock (sync)
             {
                 if (ReferenceEquals(openingCancellation, cancellation)) openingCancellation = null;
-                if (ReferenceEquals(opening, session) && !cancellation.IsCancellationRequested && !session.Blocked)
-                    pendingChanges?.Request(); // Preserve a marking made during the startup exchange.
             }
             cancellation.Dispose();
         }
@@ -268,13 +288,14 @@ internal static class AndroidBluetoothSync
     }
 
     internal static async Task SynchronizeAsync(string address, string? expectedScope = null,
-        CancellationToken requestToken = default, bool openingAttempt = false)
+        CancellationToken requestToken = default, bool openingAttempt = false, bool consumptionAttempt = false)
     {
         if (!NearbySyncService.Enabled || !HasPermission || Adapter?.IsEnabled != true)
             throw new InvalidOperationException("Ative o Bluetooth e a sincronização na aplicação.");
-        Start();
-        CancellationToken receiverToken;
-        lock (sync) receiverToken = lifetime?.Token ?? throw new InvalidOperationException("Mantenha a aplicação aberta para sincronizar.");
+        if (!consumptionAttempt) Start();
+        CancellationToken receiverToken = requestToken;
+        if (!consumptionAttempt)
+            lock (sync) receiverToken = lifetime?.Token ?? throw new InvalidOperationException("Mantenha a aplicação aberta para sincronizar.");
         using var request = CancellationTokenSource.CreateLinkedTokenSource(receiverToken, requestToken);
         var token = request.Token;
         var selection = await MainThread.InvokeOnMainThreadAsync(() =>
@@ -283,7 +304,7 @@ internal static class AndroidBluetoothSync
             var key = RemoteControlService.CurrentProfileKey;
             var scope = UserProfileService.Scope(account.Id);
             if (expectedScope is not null && scope != expectedScope) throw new OperationCanceledException(token);
-            if (!openingAttempt) Preferences.Default.Set("profile-sync.bluetooth.peer." + key, address);
+            if (!openingAttempt && !consumptionAttempt) Preferences.Default.Set("profile-sync.bluetooth.peer." + key, address);
             return (Key: key, Scope: scope, Version: AppServices.SessionVersion);
         });
         await clientGate.WaitAsync(token);
@@ -302,7 +323,7 @@ internal static class AndroidBluetoothSync
             using (var connection = CancellationTokenSource.CreateLinkedTokenSource(token))
             using (var cancellation = connection.Token.Register(() => Close(socket)))
             {
-                var seconds = openingAttempt ? 10 : 30;
+                var seconds = openingAttempt || consumptionAttempt ? 10 : 30;
                 connection.CancelAfter(TimeSpan.FromSeconds(seconds));
                 try { await Task.Run(socket.Connect, connection.Token); }
                 catch (Exception ex) when (ex is not OutOfMemoryException && connection.IsCancellationRequested && !token.IsCancellationRequested)
@@ -412,23 +433,28 @@ internal static class AndroidBluetoothSync
         try
         {
             token.ThrowIfCancellationRequested();
-            lock (sync)
-                if (opening is { Running: true } or { Blocked: true }) return;
             var pending = await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     var key = RemoteControlService.CurrentProfileKey;
                     var scope = AppServices.ActiveAccount is { } account ? UserProfileService.Scope(account.Id) : "";
-                    return (Scope: scope, Change: NearbySyncService.Pending(scope),
-                        Address: key.Length == 0 ? "" : Preferences.Default.Get("profile-sync.bluetooth.peer." + key, ""));
+                    var address = key.Length == 0 ? "" : Preferences.Default.Get("profile-sync.bluetooth.peer." + key, "");
+                    if (address.Length == 0) address = NearbySyncService.RememberedPeers(key).FirstOrDefault()?.Address ?? "";
+                    return (Scope: scope, Change: NearbySyncService.Pending(scope), Address: address);
                 });
             if (pending.Change.Length == 0) return;
             if (pending.Address.Length == 0)
-            { NearbySyncService.SetStatus("Escolha o equipamento Bluetooth uma vez para sincronizar os conteúdos vistos e ouvidos."); return; }
-            await SynchronizeAsync(pending.Address, pending.Scope);
+            { NearbySyncService.SetStatus("Sem equipamento Bluetooth conhecido. Nova tentativa apenas na próxima marcação de conteúdo visto ou ouvido."); return; }
+            await SynchronizeAsync(pending.Address, pending.Scope, token, consumptionAttempt: true);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
-        { if (!token.IsCancellationRequested) NearbySyncService.ReportError(ex); }
+        {
+            if (!token.IsCancellationRequested)
+            {
+                System.Diagnostics.Debug.WriteLine(ex);
+                NearbySyncService.SetStatus("Equipamento indisponível. Alterações guardadas; nova tentativa apenas na próxima marcação de conteúdo visto ou ouvido.");
+            }
+        }
     }
 
     private static void Close(BluetoothSocket socket)

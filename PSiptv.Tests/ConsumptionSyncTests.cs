@@ -80,6 +80,57 @@ internal static class ConsumptionSyncTests
         worker.Request(); await Task.Delay(40);
         Check(count == 2, "Sair da aplicação cancela o worker e impede envios tardios");
 
+        var once = new ConsumptionSyncWorker(TimeSpan.Zero);
+        using var onceLifetime = new CancellationTokenSource();
+        using var offlineAttempts = new SemaphoreSlim(0);
+        var offlineCount = 0;
+        var firstTransfer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var oneShotRun = once.RunAsync(async () =>
+        {
+            var attempt = Interlocked.Increment(ref offlineCount);
+            offlineAttempts.Release();
+            if (attempt == 1)
+            {
+                await firstTransfer.Task;
+                throw new IOException("Peer offline");
+            }
+        }, onceLifetime.Token);
+        once.Request();
+        Check(await offlineAttempts.WaitAsync(TimeSpan.FromSeconds(2)), "Conclusão inicia uma única tentativa com o equipamento indisponível");
+        firstTransfer.SetResult();
+        await Task.Delay(80);
+        Check(offlineCount == 1 && !oneShotRun.IsCompleted,
+            "Falha não repete a tentativa nem impede a próxima marcação");
+        once.Request();
+        Check(await offlineAttempts.WaitAsync(TimeSpan.FromSeconds(2)),
+            "Outro programa ouvido inicia nova tentativa depois de uma falha");
+        await Task.Delay(80);
+        Check(offlineCount == 2, "Nova tentativa termina sem qualquer repetição automática");
+        onceLifetime.Cancel();
+        await oneShotRun;
+
+        var duringTransfer = new ConsumptionSyncWorker(TimeSpan.Zero);
+        using var duringLifetime = new CancellationTokenSource();
+        using var duringAttempts = new SemaphoreSlim(0);
+        var duringCount = 0;
+        var finishTransfer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var duringRun = duringTransfer.RunAsync(async () =>
+        {
+            var attempt = Interlocked.Increment(ref duringCount);
+            duringAttempts.Release();
+            if (attempt == 1) await finishTransfer.Task;
+        }, duringLifetime.Token);
+        duringTransfer.Request();
+        Check(await duringAttempts.WaitAsync(TimeSpan.FromSeconds(2)), "Primeira marcação inicia a troca");
+        duringTransfer.Request();
+        finishTransfer.SetResult();
+        Check(await duringAttempts.WaitAsync(TimeSpan.FromSeconds(2)),
+            "Marcação durante uma troca mantém uma nova tentativa pendente");
+        await Task.Delay(80);
+        Check(duringCount == 2, "Terminar a troca não gera uma terceira tentativa");
+        duringLifetime.Cancel();
+        await duringRun;
+
         using var frames = new MemoryStream();
         var snapshot = (await store.SnapshotAsync(account.Id)) with { ViewingStates = ViewingStateSync.Snapshot(a) };
         await ProfileSyncProtocol.WriteAsync(frames, new(ProfileSyncProtocol.Magic, ProfileSyncProtocol.Version, "profile", snapshot), default);

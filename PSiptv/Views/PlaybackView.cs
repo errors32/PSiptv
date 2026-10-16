@@ -492,6 +492,27 @@ public sealed class PlaybackView : ContentView
         await SavePodcastProgressAsync();
     }
 
+#if ANDROID
+    internal Android.Media.Session.PlaybackStateCode SystemPlaybackState => player?.State switch
+    {
+        VLCState.Playing => Android.Media.Session.PlaybackStateCode.Playing,
+        VLCState.Paused => Android.Media.Session.PlaybackStateCode.Paused,
+        VLCState.Opening => Android.Media.Session.PlaybackStateCode.Connecting,
+        VLCState.Buffering => Android.Media.Session.PlaybackStateCode.Buffering,
+        VLCState.Error => Android.Media.Session.PlaybackStateCode.Error,
+        VLCState.Ended or VLCState.Stopped => Android.Media.Session.PlaybackStateCode.Stopped,
+        _ => Android.Media.Session.PlaybackStateCode.Connecting
+    };
+    internal float SystemPlaybackSpeed => player?.Rate ?? 1;
+
+    internal async Task SeekFromSystemAsync(long milliseconds)
+    {
+        if (player?.IsSeekable != true || current?.Kind == MediaKind.Channel) return;
+        player.Time = (long)(Math.Clamp(milliseconds / 1000d, 0, Math.Max(0, Duration)) * 1000);
+        await SavePodcastProgressAsync();
+    }
+#endif
+
     public bool SetPodcastRate(float value)
     {
 #if ANDROID || WINDOWS
@@ -669,6 +690,9 @@ public sealed class PlaybackView : ContentView
                 native.MediaPlayer = player;
 #endif
             player.Play(media);
+#if ANDROID
+            AndroidPlaybackMediaService.Attach(this);
+#endif
             UpdatePlaybackButton();
             ApplyAspectRatio();
             ShowControlsTemporarily();
@@ -787,6 +811,7 @@ public sealed class PlaybackView : ContentView
 #if ANDROID
     public void ConfigurePictureInPicture(Android.App.PictureInPictureParams.Builder builder)
     {
+        AndroidPlaybackMediaService.ConfigurePictureInPicture(builder, this);
         // Restrict the PiP transition to the actual video instead of shrinking
         // the complete page (status/header included). The final PiP activity is
         // already switched to a video-only layout by LiveTvView/PlayerPage.
@@ -1467,6 +1492,9 @@ public sealed class PlaybackView : ContentView
 #endif
     private async Task ReleaseAsync()
     {
+#if ANDROID
+        AndroidPlaybackMediaService.Detach(this);
+#endif
         SetKeepScreenOn(false);
         current = null;
 #if ANDROID || WINDOWS
