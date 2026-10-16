@@ -22,17 +22,27 @@ Na primeira abertura de uma lista desbloqueada após iniciar a aplicação, a PS
 
 Em **Sincronização e cópia de segurança** e nas definições dos podcasts pode ativar a sincronização **Bluetooth**, sem exigir a mesma rede Wi-Fi. Instale a mesma versão nos dois equipamentos, emparelhe-os nas definições Android, ative a opção nos dois e abra a mesma lista com o mesmo nome de perfil. Escolha o equipamento uma vez; as seguintes sincronizações ocorrem ao marcar podcasts como ouvidos/por ouvir ou filmes/episódios como vistos/por ver. Sem consultas periódicas. Usa Bluetooth Classic seguro do Android e não sincroniza listas ou credenciais. Consulte [Validação](docs/validation.md) para testes e limitações.
 
-Na versão **1.7.0**, os equipamentos que concluíram uma sincronização ficam
-memorizados por lista/perfil. Ao abrir ou voltar à aplicação depois de a deixar
-em segundo plano, tenta sincronizar com os equipamentos memorizados, mesmo
-sem alterações locais pendentes, com **cinco tentativas no total por abertura**.
-Os que responderem não são repetidos nessa abertura. Se nenhum responder,
-para até à próxima abertura. Desde a **1.7.2**, cada nova conclusão ou marcação
-de conteúdo visto/ouvido permite uma tentativa independente com o equipamento
-conhecido, mesmo que a campanha de abertura tenha falhado. Se não responder,
-guarda as alterações e só volta a tentar na próxima marcação, sem repetições
-periódicas. Um podcast pode iniciar essa tentativa ao terminar em segundo plano.
-A escolha guardada nas versões anteriores é reutilizada na atualização.
+Os equipamentos sincronizados ficam memorizados por lista/perfil. Adicionar ou
+remover qualquer favorito (podcast, episódio, filme, série, rádio ou canal) e
+alterar estados visto/ouvido ou pausar/parar um episódio agenda uma sincronização em segundo plano, com
+**no máximo duas tentativas por alteração**. O primeiro sucesso termina o lote;
+se ambas falharem, guarda as alterações e aguarda outra alteração local.
+Ações próximas são agrupadas durante 500 ms. Abrir/retomar a aplicação ou
+reativar o Bluetooth não inicia novas tentativas de envio.
+
+Pausar ou parar um episódio de podcast favorito guarda e sincroniza o tempo de
+escuta em segundos, para continuar no outro equipamento. A posição mais recente
+é usada mesmo quando se recuou no episódio. Um leitor já pausado no mesmo episódio
+recebe o novo tempo sem começar a tocar; um leitor a reproduzir mantém a sua posição.
+
+Com a sincronização ativa e a lista desbloqueada, o Android mantém um serviço
+de dispositivos ligados e uma notificação persistente para receber alterações
+mesmo com a aplicação minimizada ou o ecrã desligado. Pode desativar pela
+notificação ou nas definições. A transferência e a combinação dos dados correm
+fora da interface; apenas as atualizações visuais regressam à interface.
+Bloquear a lista, desativar a opção ou fechar a aplicação pela lista de recentes
+termina o serviço. O sistema ou as restrições de bateria do fabricante podem
+interromper a execução; não se garante funcionamento após forçar a paragem.
 
 No Android, a **1.7.2** publica a reprodução do leitor integrado nos controlos
 multimédia do sistema: título, capa, estado, pausa/retoma, paragem e posição

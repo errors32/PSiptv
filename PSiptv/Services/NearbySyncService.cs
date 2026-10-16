@@ -5,7 +5,7 @@ namespace PSiptv.Services;
 
 public sealed record NearbySyncDevice(string Address, string Name);
 
-/// <summary>Optional Bluetooth synchronization while both applications are open.</summary>
+/// <summary>Optional Bluetooth synchronization, including while the Android app is minimized.</summary>
 public static class NearbySyncService
 {
     private const string EnabledKey = "profile-sync.bluetooth.enabled.v1";
@@ -43,6 +43,9 @@ public static class NearbySyncService
     }
 
     internal static void NotifyConsumptionChanged(string scope)
+        => NotifyFavoritesChanged(scope);
+
+    internal static void NotifyFavoritesChanged(string scope)
     {
         if (!Enabled) return;
         lock (pendingLock) Preferences.Default.Set(PendingKey(scope), Guid.NewGuid().ToString("N"));

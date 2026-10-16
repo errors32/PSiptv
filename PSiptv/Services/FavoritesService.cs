@@ -34,7 +34,11 @@ public static class FavoritesService
         var version = AppServices.SessionVersion;
         var scope = UserProfileService.Scope(account.Id);
         var saved = await Store.SetAsync(account, item, !Contains(item), scope);
-        if (AppServices.ActiveAccount?.Id == account.Id && AppServices.SessionVersion == version) Apply(scope, saved);
+        if (AppServices.ActiveAccount?.Id == account.Id && AppServices.SessionVersion == version)
+        {
+            Apply(scope, saved);
+            NearbySyncService.NotifyFavoritesChanged(scope);
+        }
     }
 
     public static async Task<FavoriteSnapshot?> SnapshotAsync()
@@ -56,9 +60,20 @@ public static class FavoritesService
 
     public static async Task<bool> ImportNewerAsync(PlaylistAccount account, string profileId, FavoriteSnapshot snapshot)
     {
-        var updated = await Store.ImportNewerAsync(UserProfileService.Scope(account.Id, profileId), account, snapshot);
+        var scope = UserProfileService.Scope(account.Id, profileId);
+        var updated = await Store.ImportNewerAsync(scope, account, snapshot);
         if (updated && AppServices.ActiveAccount?.Id == account.Id && UserProfileService.Active.Id == profileId)
-            await LoadAsync();
+        {
+            var merged = await Store.SnapshotAsync(scope);
+            await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                if (AppServices.ActiveAccount?.Id != account.Id || UserProfileService.Active.Id != profileId) return;
+                Apply(scope, merged.Entries);
+                if (AudioPlaybackService.Player is { ActiveMedia: { } item } player &&
+                    merged.PodcastProgress?.GetValueOrDefault(item.Id) is { } checkpoint)
+                    await player.ApplyImportedPodcastProgressAsync(checkpoint);
+            });
+        }
         return updated;
     }
 
@@ -71,11 +86,17 @@ public static class FavoritesService
         if (UserProfileService.Scope(AppServices.ActiveAccount?.Id ?? "") == scope) Changed?.Invoke();
     }
 
-    public static async Task RecordPodcastAsync(MediaItem item, double position, double duration, string accountId, int session)
+    public static async Task RecordPodcastAsync(MediaItem item, double position, double duration, string accountId, int session,
+        bool synchronize = false)
     {
         if (AppServices.ActiveAccount?.Id != accountId || AppServices.SessionVersion != session) return;
         var portable = item with { Url = item.PodcastAudioUrl.Length > 0 ? item.PodcastAudioUrl : item.Url, IsCatchup = false };
-        await Store.RecordPodcastAsync(UserProfileService.Scope(accountId), portable, position, duration);
+        var scope = UserProfileService.Scope(accountId);
+        var checkpointAvailable = await Store.RecordPodcastAsync(scope, portable, position, duration,
+            forceCheckpoint: synchronize);
+        if (synchronize && checkpointAvailable && AppServices.ActiveAccount?.Id == accountId &&
+            AppServices.SessionVersion == session)
+            NearbySyncService.NotifyFavoritesChanged(scope);
     }
 
     public static async Task VisitPodcastAsync(string id, DateTimeOffset date)

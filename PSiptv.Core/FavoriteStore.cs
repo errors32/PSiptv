@@ -164,21 +164,25 @@ public sealed class FavoriteStore(
         return heard.Where(e => ids.Contains(e.Key) || ids.Contains(e.Value.PodcastId)).ToDictionary(e => e.Key, e => e.Value);
     }
 
-    public async Task RecordPodcastAsync(string scope, MediaItem item, double position, double duration)
+    // True also for an unchanged checkpoint: a pause must publish a position
+    // that may already have been saved by the local playback timer.
+    public async Task<bool> RecordPodcastAsync(string scope, MediaItem item, double position, double duration,
+        bool forceCheckpoint = false)
     {
-        if (!PodcastFeed.IsPodcast(item) || item.HasEpisodes || !double.IsFinite(position) || !double.IsFinite(duration)) return;
+        if (!PodcastFeed.IsPodcast(item) || item.HasEpisodes || !double.IsFinite(position) || !double.IsFinite(duration)) return false;
         await gate.WaitAsync();
         try
         {
             var snapshot = await ReadSnapshotAsync(scope);
             if (!snapshot.Entries.Any(e => e.Item.Id == item.Id || e.Item.Id == item.ParentSeriesId) ||
-                snapshot.HeardEpisodes.ContainsKey(item.Id)) return;
+                snapshot.HeardEpisodes.ContainsKey(item.Id)) return false;
             var values = (snapshot.PodcastProgress ?? new Dictionary<string, PodcastPlaybackEntry>()).ToDictionary();
             position = Math.Clamp(position, 0, duration > 0 ? duration : double.MaxValue);
-            if (values.TryGetValue(item.Id, out var previous) && Math.Abs(previous.Position - position) < 1) return;
+            if (!forceCheckpoint && values.TryGetValue(item.Id, out var previous) && Math.Abs(previous.Position - position) < 1) return true;
             var date = NextDate(snapshot.ModifiedAt);
             values[item.Id] = new(item, position, Math.Max(0, duration), date);
             await SaveAsync(scope, snapshot with { ModifiedAt = date, PodcastProgress = values });
+            return true;
         }
         finally { gate.Release(); }
     }

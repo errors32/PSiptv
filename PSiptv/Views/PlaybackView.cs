@@ -28,7 +28,7 @@ public sealed class PlaybackView : ContentView
         ToggleAudioAsync();
     private Task ToggleAudioAsync()
     {
-        if (video.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Playing) video.Pause();
+        if (video.CurrentState == CommunityToolkit.Maui.Core.MediaElementState.Playing) Pause();
         else video.Play();
         return Task.CompletedTask;
     }
@@ -473,11 +473,34 @@ public sealed class PlaybackView : ContentView
 #endif
     }
 
-    private async Task SavePodcastProgressAsync()
+    private async Task SavePodcastProgressAsync(bool synchronize = false)
     {
         if (!recordHistory || current is not { } item || !PodcastFeed.IsPodcast(item)) return;
-        try { await FavoritesService.RecordPodcastAsync(item, Position, Duration, accountId, session); }
+        var position = Position;
+        var duration = Duration;
+        var savedAccount = accountId;
+        var savedSession = session;
+        try
+        {
+            await Task.Run(() => FavoritesService.RecordPodcastAsync(item, position, duration,
+                savedAccount, savedSession, synchronize));
+        }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+    }
+
+    internal Task ApplyImportedPodcastProgressAsync(PodcastPlaybackEntry checkpoint)
+    {
+        if (current?.Id != checkpoint.Item.Id || !PodcastFeed.IsPodcast(checkpoint.Item)) return Task.CompletedTask;
+#if ANDROID || WINDOWS
+        if (player?.State != VLCState.Paused || !player.IsSeekable) return Task.CompletedTask;
+        recoveryPosition = PodcastPolicy.ResumePosition(checkpoint, false);
+        player.Time = (long)(recoveryPosition * 1000);
+        return Task.CompletedTask;
+#else
+        if (video.CurrentState != CommunityToolkit.Maui.Core.MediaElementState.Paused) return Task.CompletedTask;
+        recoveryPosition = PodcastPolicy.ResumePosition(checkpoint, false);
+        return video.SeekTo(TimeSpan.FromSeconds(recoveryPosition));
+#endif
     }
 
     public async Task SeekByAsync(int seconds)
@@ -764,9 +787,11 @@ public sealed class PlaybackView : ContentView
         var stoppingGeneration = ++generation;
         AudioPlaybackService.Detach(this);
         PlaybackStopping?.Invoke();
+        // Capture the time at Stop, before asynchronous diagnostics/storage work.
+        var savingProgress = SavePodcastProgressAsync(synchronize: true);
         await SaveDiagnosticAsync("Parado");
         if (!IsLoaded) AppServices.PlaybackSuspended -= Stop;
-        await SavePodcastProgressAsync();
+        await savingProgress;
         if (stoppingGeneration != generation) return;
         CancelReconnect();
         reconnectAttempt = 0;
@@ -791,6 +816,7 @@ public sealed class PlaybackView : ContentView
 #else
         video.Pause();
 #endif
+        _ = SavePodcastProgressAsync(synchronize: true);
     }
 
     public void HandlePictureInPictureChanged(bool active)
@@ -1113,6 +1139,7 @@ public sealed class PlaybackView : ContentView
             }
             player.Pause();
             if (IsTimeshiftChannel) timeshiftPausedAt = Environment.TickCount64;
+            _ = SavePodcastProgressAsync(synchronize: true);
         }
         else
         {

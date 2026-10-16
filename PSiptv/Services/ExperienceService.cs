@@ -63,9 +63,13 @@ public static class ExperienceService
         finally { gate.Release(); }
         if (changed && AppServices.ActiveAccount?.Id == account && UserProfileService.Active.Id == profile)
         {
-            Changed?.Invoke();
-            ViewingStatesImported?.Invoke();
-            _ = TvDiscoveryService.RefreshAsync();
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (AppServices.ActiveAccount?.Id != account || UserProfileService.Active.Id != profile) return;
+                Changed?.Invoke();
+                ViewingStatesImported?.Invoke();
+                _ = TvDiscoveryService.RefreshAsync();
+            });
         }
     }
     public static Dictionary<string, string> ExportOptions() => OptionKeys.Where(k => Preferences.Default.ContainsKey(k)).ToDictionary(k => k, k => Preferences.Default.Get(k, ""));

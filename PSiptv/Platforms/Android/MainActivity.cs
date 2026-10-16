@@ -33,11 +33,6 @@ namespace PSiptv
             if (PackageManager?.HasSystemFeature("android.software.leanback") == true)
                 RequestedOrientation = ScreenOrientation.Landscape;
         }
-        protected override void OnStart()
-        {
-            base.OnStart();
-            AndroidBluetoothSync.BeginOpening();
-        }
         protected override void OnPause()
         {
             AndroidBluetoothSync.Pause();

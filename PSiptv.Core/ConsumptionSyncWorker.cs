@@ -2,7 +2,7 @@ using System.Threading.Channels;
 
 namespace PSiptv.Core;
 
-/// <summary>One attempt per consumption event (coalescing batches); failures never schedule retries.</summary>
+/// <summary>Processes local edit events in batches; no event means no outgoing synchronization.</summary>
 public sealed class ConsumptionSyncWorker(TimeSpan? debounce = null)
 {
     private readonly Channel<bool> requests = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
@@ -23,8 +23,7 @@ public sealed class ConsumptionSyncWorker(TimeSpan? debounce = null)
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
-                    // Discard this attempt. Keep listening so the next consumed
-                    // programme can initiate a fresh attempt after an offline peer.
+                    // Discard this batch. Only another local edit can start a new batch.
                     System.Diagnostics.Debug.WriteLine(ex);
                 }
             }

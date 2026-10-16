@@ -131,6 +131,97 @@ internal static class ConsumptionSyncTests
         duringLifetime.Cancel();
         await duringRun;
 
+        var budgetCalls = 0;
+        Task<bool> OfflinePeer(int attempt, CancellationToken token)
+        { Interlocked.Increment(ref budgetCalls); return Task.FromResult(false); }
+        Check(!await BoundedSyncAttempt.RunAsync(OfflinePeer, default, TimeSpan.Zero) && budgetCalls == 2,
+            "Favorito alterado permite no máximo duas tentativas com equipamento indisponível");
+        await Task.Delay(80);
+        Check(budgetCalls == 2, "Esgotar as duas tentativas não agenda novas ligações");
+        await BoundedSyncAttempt.RunAsync(OfflinePeer, default, TimeSpan.Zero);
+        Check(budgetCalls == 4, "Outra alteração local permite duas novas tentativas");
+        budgetCalls = 0;
+        Check(await BoundedSyncAttempt.RunAsync((attempt, token) =>
+        { budgetCalls++; return Task.FromResult(true); }, default, TimeSpan.Zero) && budgetCalls == 1,
+            "Sucesso na primeira tentativa dispensa a segunda");
+        budgetCalls = 0;
+        Check(await BoundedSyncAttempt.RunAsync((attempt, token) =>
+        { budgetCalls++; return Task.FromResult(attempt == 2); }, default, TimeSpan.Zero) && budgetCalls == 2,
+            "Equipamento disponível na segunda tentativa conclui a sincronização");
+        budgetCalls = 0;
+        Check(!await BoundedSyncAttempt.RunAsync((attempt, token) =>
+        { budgetCalls++; throw new IOException("Disconnected"); }, default, TimeSpan.Zero) && budgetCalls == 2,
+            "Exceções de ligação também respeitam o limite de duas tentativas");
+        using var cancelBudget = new CancellationTokenSource();
+        budgetCalls = 0;
+        var budgetCancelled = false;
+        try
+        {
+            await BoundedSyncAttempt.RunAsync((attempt, token) =>
+            { budgetCalls++; cancelBudget.Cancel(); return Task.FromResult(false); }, cancelBudget.Token, TimeSpan.Zero);
+        }
+        catch (OperationCanceledException) { budgetCancelled = true; }
+        Check(budgetCancelled && budgetCalls == 1, "Bloquear ou mudar de perfil cancela a segunda tentativa");
+
+        var allFavorites = new[]
+        {
+            feed, podcast, item, item with { Id = "series:sync", Kind = MediaKind.Series, HasEpisodes = true },
+            item with { Id = "radio-browser:sync", Kind = MediaKind.Channel },
+            item with { Id = "channel:sync", Kind = MediaKind.Channel }
+        };
+        var sourceMemory = new Dictionary<string, string>();
+        var receiverMemory = new Dictionary<string, string>();
+        FavoriteStore FavoriteMemory(Dictionary<string, string> data) => new(
+            key => Task.FromResult(data.GetValueOrDefault(key)),
+            (key, json) => { data[key] = json; return Task.CompletedTask; },
+            key => { data.Remove(key); return Task.CompletedTask; });
+        var sourceFavorites = FavoriteMemory(sourceMemory);
+        var receiverFavorites = FavoriteMemory(receiverMemory);
+        foreach (var favorite in allFavorites)
+            await sourceFavorites.SetAsync(account, favorite, true);
+        await receiverFavorites.ImportNewerAsync(account.Id, account, await sourceFavorites.SnapshotAsync(account.Id));
+        Check((await receiverFavorites.LoadAsync(account.Id)).Count == allFavorites.Length,
+            "Sincronização transporta podcasts, episódios, filmes, séries, rádios e canais favoritos");
+        var beforeRemoval = await receiverFavorites.SnapshotAsync(account.Id);
+        foreach (var favorite in allFavorites)
+            await sourceFavorites.SetAsync(account, favorite, false);
+        await receiverFavorites.ImportNewerAsync(account.Id, account, await sourceFavorites.SnapshotAsync(account.Id));
+        Check((await receiverFavorites.LoadAsync(account.Id)).Count == 0,
+            "Remover favoritos de todos os tipos propaga as remoções ao equipamento recetor");
+        await receiverFavorites.ImportNewerAsync(account.Id, account, beforeRemoval);
+        Check((await receiverFavorites.LoadAsync(account.Id)).Count == 0,
+            "Uma cópia antiga não recupera favoritos removidos");
+
+        await sourceFavorites.SetAsync(account, feed, true);
+        Check(await sourceFavorites.RecordPodcastAsync(account.Id, podcast, 1425.25, 3600, forceCheckpoint: true),
+            "Pausa guarda o tempo exato do episódio, incluindo frações de segundo");
+        var pausedSnapshot = await sourceFavorites.SnapshotAsync(account.Id);
+        await receiverFavorites.ImportNewerAsync(account.Id, account, pausedSnapshot);
+        var receiverCheckpoint = (await receiverFavorites.SnapshotAsync(account.Id)).PodcastProgress![podcast.Id];
+        Check(PodcastPolicy.ResumePosition(receiverCheckpoint, false) == 1425.25,
+            "Outro equipamento retoma aos 23:45.25 recebidos na sincronização");
+        Check(await receiverFavorites.RecordPodcastAsync(account.Id, podcast, 1530.75, 3600, forceCheckpoint: true),
+            "Parar no segundo equipamento guarda o novo tempo de escuta");
+        await sourceFavorites.ImportNewerAsync(account.Id, account, await receiverFavorites.SnapshotAsync(account.Id));
+        Check((await sourceFavorites.SnapshotAsync(account.Id)).PodcastProgress![podcast.Id].Position == 1530.75,
+            "Regressar ao primeiro equipamento conserva o tempo mais recente");
+        await sourceFavorites.ImportNewerAsync(account.Id, account, pausedSnapshot);
+        Check((await sourceFavorites.SnapshotAsync(account.Id)).PodcastProgress![podcast.Id].Position == 1530.75,
+            "Uma cópia antiga não faz recuar o tempo de escuta sincronizado");
+        await receiverFavorites.RecordPodcastAsync(account.Id, podcast, 900.5, 3600, forceCheckpoint: true);
+        await sourceFavorites.ImportNewerAsync(account.Id, account, await receiverFavorites.SnapshotAsync(account.Id));
+        Check((await sourceFavorites.SnapshotAsync(account.Id)).PodcastProgress![podcast.Id].Position == 900.5,
+            "Recuar intencionalmente e pausar sincroniza o tempo mais recente, sem escolher o maior tempo");
+        var checkpointDate = (await receiverFavorites.SnapshotAsync(account.Id)).PodcastProgress![podcast.Id].UpdatedAt;
+        await receiverFavorites.RecordPodcastAsync(account.Id, podcast, 900.75, 3600, forceCheckpoint: true);
+        var preciseCheckpoint = (await receiverFavorites.SnapshotAsync(account.Id)).PodcastProgress![podcast.Id];
+        Check(preciseCheckpoint.Position == 900.75 && preciseCheckpoint.UpdatedAt > checkpointDate,
+            "Pausa após gravação periódica publica um checkpoint exato e com data atualizada");
+        await receiverFavorites.SetHeardAsync(account.Id, podcast, true);
+        Check(!await receiverFavorites.RecordPodcastAsync(account.Id, podcast, 3600, 3600, forceCheckpoint: true) &&
+            !(await receiverFavorites.SnapshotAsync(account.Id)).PodcastProgress!.ContainsKey(podcast.Id),
+            "Parar após concluir o episódio não recupera uma posição para continuar a ouvir");
+
         using var frames = new MemoryStream();
         var snapshot = (await store.SnapshotAsync(account.Id)) with { ViewingStates = ViewingStateSync.Snapshot(a) };
         await ProfileSyncProtocol.WriteAsync(frames, new(ProfileSyncProtocol.Magic, ProfileSyncProtocol.Version, "profile", snapshot), default);
