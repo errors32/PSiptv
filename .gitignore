@@ -7,3 +7,8 @@
 # Generated build and UI-validation dependencies (too large for GitHub)
 /artifacts/*.apk
 /artifacts/ui-validation/pydeps/
+
+/artifacts/windows-*/
+/artifacts/*.windows-*.zip
+/artifacts/*.windows-*.zip.sha256
+/artifacts/updater-test-*/

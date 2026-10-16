@@ -480,6 +480,8 @@ public partial class MainPage : ContentPage
         }
 #if ANDROID
         _ = AndroidAppUpdateService.CheckOnStartupAsync(this);
+#elif WINDOWS
+        _ = WindowsAppUpdateService.CheckOnStartupAsync(this);
 #endif
     }
 

@@ -34,3 +34,7 @@ jobs:
         run: dotnet workload install ${{ matrix.workload }}
       - name: Build application
         run: dotnet build PSiptv/PSiptv.csproj -c Debug -f ${{ matrix.framework }} -p:AppTargetFrameworks=${{ matrix.framework }}
+      - name: Verify Windows update replacement and rollback
+        if: matrix.workload == 'maui-windows'
+        shell: pwsh
+        run: ./scripts/Test-WindowsUpdater.ps1

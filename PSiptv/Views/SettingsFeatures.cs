@@ -54,6 +54,9 @@ public sealed partial class SettingsPage
 #if ANDROID
         items.Add(ActionRow(FaIcons.Download, "Atualizações da aplicação",
             () => Navigation.PushAsync(new AndroidAppUpdatePage())));
+#elif WINDOWS
+        items.Add(ActionRow(FaIcons.Download, "Atualizações da aplicação",
+            () => Navigation.PushAsync(new WindowsAppUpdatePage())));
 #endif
         items.Add(ActionRow(FaIcons.CircleInfo, "Aviso legal e responsabilidade",
             () => Navigation.PushAsync(new LegalNoticePage())));

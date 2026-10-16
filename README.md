@@ -269,3 +269,11 @@ Validação realizada: 121 verificações passaram; Windows e Android compilaram
 
 A versão 1.6.1 acrescenta início personalizável, pré-visualização nativa e acessibilidade da aparência, catálogo unificado, alternativas de canais, várias fontes XMLTV, coleções e estados, integração opcional com o launcher Android TV, controlo de conflitos e retenção DVR, diagnóstico de reprodução e atalhos com memória de foco. Consulte o [guia de utilização](docs/experience-1.6.1.md) e as [notas da versão](artifacts/RELEASE_NOTES_1.6.1.md).
 
+
+### Atualizações Windows
+
+A distribuição Windows é um ZIP portátil autónomo. Na primeira instalação, descarregue o pacote `PSiptv.v1.7.4.windows-x64.zip` nos [Releases](https://github.com/errors32/PSiptv/releases/tag/1.7.4), extraia-o para uma pasta com permissões de escrita e execute `PSiptv.exe`. Instalações anteriores precisam desta instalação manual inicial para receber o atualizador.
+
+Em **Configurações → Sobre → Atualizações da aplicação** pode verificar novas versões, ativar a procura diária e configurar o token de leitura do repositório privado (Contents: Read). O atualizador escolhe a versão estável mais recente com pacote para a arquitetura do processo, valida tamanho e SHA-256, fecha a aplicação, substitui a pasta e volta a abrir. Os dados e o armazenamento seguro mantêm-se fora da pasta dos binários. A pasta anterior fica ao lado da instalação com o sufixo `.backup-…`; falhas na substituição repõem a pasta anterior. O diagnóstico fica em `%TEMP%\PSiptv-windows-update.log`. O diretório pai deve permitir escrita e todas as outras instâncias devem estar fechadas.
+
+Para publicar versões seguintes, incremente a versão Windows no projeto, execute `./scripts/Publish-Windows.ps1 -Version X.Y.Z` e, depois de fazer commit/push, `./scripts/Release-Apps.ps1 -Version X.Y.Z`. Antes de publicar, compile e assine também o APK Android com a chave existente. O segundo comando exige a validação da assinatura Android, usa o gestor de credenciais do Git, publica o ZIP, o SHA-256 e o APK e verifica os digests devolvidos pelo GitHub antes de tornar a release visível para ambas as plataformas. Não coloque tokens nos pacotes nem no repositório.

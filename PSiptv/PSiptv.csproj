@@ -35,7 +35,7 @@
 		<ApplicationId>com.PS.PSiptv</ApplicationId>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>1.7.3</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>1.7.4</ApplicationDisplayVersion>
 
 		<!-- Android uses this integer to decide whether an APK is an update. It must
 		     increase for every package distributed to an existing installation. -->
@@ -88,7 +88,7 @@
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
 	</ItemGroup>
 
-	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+	<ItemGroup>
 		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
 			<_Parameter1>GitHubReleaseOwner</_Parameter1>
 			<_Parameter2>$(GitHubReleaseOwner)</_Parameter2>

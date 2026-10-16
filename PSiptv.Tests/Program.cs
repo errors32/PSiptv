@@ -6,6 +6,7 @@ using PSiptv.Core;
 
 try
 {
+WindowsUpdateChecks.Run();
 var passed = 0;
 Check(AudioPlaybackPolicy.PersistsAcrossNavigation(new MediaItem("radio-browser:station", "Radio", "", MediaKind.Channel)),
     "Rádio mantém a sessão ao navegar");
