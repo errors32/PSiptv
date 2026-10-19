@@ -44,6 +44,19 @@ Check(AudioPlaybackPolicy.SeekTarget(8, 100, -15) == 0 && AudioPlaybackPolicy.Se
     "Saltos do leitor respeitam o início e o fim do episódio");
 Check(AudioPlaybackPolicy.SeekTarget(40, 100, -15) == 25 && AudioPlaybackPolicy.SeekTarget(40, 100, 30) == 70,
     "Comandos recuam 15 segundos e avançam 30 segundos");
+Check(!PictureInPicturePolicy.Allows(new MediaItem("radio-browser:station", "Radio", "", MediaKind.Channel), true),
+    "Rádio não abre janela flutuante mesmo com uma visualização de vídeo");
+Check(!PictureInPicturePolicy.Allows(new MediaItem("podcast:episode", "Podcast", "", MediaKind.Movie), true)
+    && !PictureInPicturePolicy.Allows(new MediaItem("episode", "Podcast", "", MediaKind.Podcast,
+        PodcastVideoUrl: "https://example.test/video.mp4"), true),
+    "Podcasts atuais e antigos usam apenas os controlos multimédia em segundo plano");
+foreach (var kind in new[] { MediaKind.Channel, MediaKind.Movie, MediaKind.Series })
+{
+    var videoItem = new MediaItem("video", "Video", "", kind);
+    Check(PictureInPicturePolicy.Allows(videoItem, true) && !PictureInPicturePolicy.Allows(videoItem, false),
+        $"Janela flutuante de {kind} exige vídeo ativo");
+}
+Check(!PictureInPicturePolicy.Allows(null, true), "Sem conteúdo não abre janela flutuante");
 void Check(bool condition, string label)
 {
     if (!condition) throw new Exception($"FAIL: {label}");

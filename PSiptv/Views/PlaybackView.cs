@@ -64,6 +64,12 @@ public sealed class PlaybackView : ContentView
     private readonly HashSet<string> failedAlternatives = [];
     private PlaybackDiagnostic? diagnostic;
     public MediaItem? ActiveMedia => current;
+    public bool CanEnterPictureInPicture =>
+#if ANDROID || WINDOWS
+        PictureInPicturePolicy.Allows(current, player is { VideoTrack: >= 0, VoutCount: > 0 });
+#else
+        false;
+#endif
     private readonly IDispatcherTimer timer;
     private readonly Label externalSubtitle = Ui.Text("", 24);
     private IReadOnlyList<SubtitleCue> externalCues = [];

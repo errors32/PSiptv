@@ -52,13 +52,13 @@ public static class PictureInPictureService
     public static void Enter()
     {
 #if ANDROID
-        if (DeviceProfile.IsAutomotive || !AppOptions.Pip || Current?.IsPlaying != true || AppServices.ActiveAccount is null || !OperatingSystem.IsAndroidVersionAtLeast(26)) return;
+        if (DeviceProfile.IsAutomotive || !AppOptions.Pip || Current is not { IsPlaying: true, CanEnterPictureInPicture: true } playback || AppServices.ActiveAccount is null || !OperatingSystem.IsAndroidVersionAtLeast(26)) return;
         var activity = Platform.CurrentActivity;
         if (activity is null) return;
         using var builder = new Android.App.PictureInPictureParams.Builder();
         using var ratio = new Android.Util.Rational(16, 9);
         builder.SetAspectRatio(ratio);
-        Current.ConfigurePictureInPicture(builder);
+        playback.ConfigurePictureInPicture(builder);
         using var parameters = builder.Build();
         try
         {
