@@ -8,6 +8,30 @@ try
 {
 WindowsUpdateChecks.Run();
 var passed = 0;
+var favoritesAccount = new PlaylistAccount { Provider = ProviderType.Xtream };
+var favoriteOlder = new MediaItem("older", "A Canal antigo", "TV", MediaKind.Channel, Url: "https://example.test/older.ts");
+var favoriteRecent = new MediaItem("recent", "Z Canal recente", "TV", MediaKind.Channel, Url: "https://example.test/recent.ts");
+var favoriteUnopened = new MediaItem("unopened", "B Canal por abrir", "TV", MediaKind.Channel, Url: "https://example.test/unopened.ts");
+var favoriteFilm = new MediaItem("film", "Filme", "Filmes", MediaKind.Movie, Url: "https://example.test/film.mp4");
+var favoritesNow = DateTimeOffset.UtcNow;
+WatchEntry[] favoriteHistory =
+[
+    new(favoriteOlder, favoritesNow.AddDays(-2), 0),
+    new(favoriteRecent with { Url = "https://example.test/recent.m3u8" }, favoritesNow, 0),
+    new(favoriteRecent, favoritesNow.AddDays(-3), 0)
+];
+var recentFavorites = FavoriteOrdering.ChannelsByRecency(
+    [favoriteOlder, favoriteFilm, favoriteUnopened, favoriteRecent], favoriteHistory, favoritesAccount);
+Check(recentFavorites.SequenceEqual([favoriteRecent, favoriteFilm, favoriteOlder, favoriteUnopened]),
+    "Favoritos ordenam canais pelo último acesso, reconhecem o formato do fornecedor e preservam outros conteúdos");
+Check(FavoriteOrdering.ChannelsByRecency([favoriteRecent, favoriteUnopened, favoriteOlder], [], favoritesAccount)
+    .SequenceEqual([favoriteOlder, favoriteUnopened, favoriteRecent]),
+    "Favoritos sem histórico ficam por ordem alfabética");
+var m3uFavoritesAccount = new PlaylistAccount { Provider = ProviderType.M3U };
+Check(FavoriteOrdering.ChannelsByRecency([favoriteOlder, favoriteRecent],
+    [new(favoriteRecent with { Id = "changed-after-reload" }, favoritesNow, 0)], m3uFavoritesAccount)
+    .SequenceEqual([favoriteRecent, favoriteOlder]),
+    "Favoritos M3U mantêm a ordem por acesso quando o identificador muda");
 Check(AudioPlaybackPolicy.PersistsAcrossNavigation(new MediaItem("radio-browser:station", "Radio", "", MediaKind.Channel)),
     "Rádio mantém a sessão ao navegar");
 Check(AudioPlaybackPolicy.PersistsAcrossNavigation(new MediaItem("podcast:episode", "Podcast", "", MediaKind.Movie, IsCatchup: true)),

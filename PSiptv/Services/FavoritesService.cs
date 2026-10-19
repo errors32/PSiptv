@@ -4,6 +4,7 @@ namespace PSiptv.Services;
 
 public static class FavoritesService
 {
+    static FavoritesService() => HistoryService.Changed += () => Changed?.Invoke();
     private static readonly FavoriteStore Store = new(
         key => SecureStorage.Default.GetAsync(key),
         (key, value) => SecureStorage.Default.SetAsync(key, value),
@@ -14,7 +15,7 @@ public static class FavoritesService
     public static event Action? Changed;
     public static IReadOnlyList<MediaItem> Items => AppServices.ActiveAccount is { } account &&
         loadedScope == UserProfileService.Scope(account.Id)
-        ? entries.Select(e => e.Item).ToArray() : [];
+        ? HistoryService.OrderFavoriteChannels(entries.Select(e => e.Item)) : [];
 
     public static bool Contains(MediaItem item) => AppServices.ActiveAccount is { } account
         && loadedScope == UserProfileService.Scope(account.Id) && keys.Contains(FavoriteStore.ItemKey(account, item));
@@ -25,6 +26,7 @@ public static class FavoritesService
         var version = AppServices.SessionVersion;
         var scope = UserProfileService.Scope(account.Id);
         var saved = await Store.LoadAsync(scope);
+        await HistoryService.LoadAsync(account.Id);
         if (AppServices.ActiveAccount?.Id == account.Id && AppServices.SessionVersion == version) Apply(scope, saved);
     }
 

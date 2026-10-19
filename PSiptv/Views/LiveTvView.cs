@@ -530,7 +530,7 @@ public sealed class LiveTvView : ContentView
         channelMenu.HeightRequest = clean ? -1 : 220;
         channelMenu.WidthRequest = clean ? Ui.IsTelevision ? 380 : 320 : -1;
         channelMenu.VerticalOptions = clean ? LayoutOptions.Fill : LayoutOptions.Start;
-        channelMenu.HorizontalOptions = clean ? LayoutOptions.Start : LayoutOptions.Fill;
+        channelMenu.HorizontalOptions = clean ? LayoutOptions.End : LayoutOptions.Fill;
         fullscreenChannels.ItemsLayout = new LinearItemsLayout(
             clean ? ItemsLayoutOrientation.Vertical : ItemsLayoutOrientation.Horizontal) { ItemSpacing = 8 };
         Arrange();

@@ -116,6 +116,13 @@ public static class CatalogOptionsService
 public static class HistoryService
 {
     private static readonly Dictionary<string, int> counts = [];
+    private static readonly Dictionary<string, IReadOnlyList<WatchEntry>> cached = [];
+    public static event Action? Changed;
+    public static IReadOnlyList<MediaItem> OrderFavoriteChannels(IEnumerable<MediaItem> items) =>
+        AppServices.ActiveAccount is { } account
+            ? FavoriteOrdering.ChannelsByRecency(items,
+                cached.GetValueOrDefault(UserProfileService.Scope(account.Id)) ?? [], account)
+            : items.ToArray();
     public static int Count => AppServices.ActiveAccount is { } a
         ? counts.GetValueOrDefault(UserProfileService.Scope(a.Id)) : 0;
     private static readonly SemaphoreSlim gate = new(1, 1);
@@ -124,6 +131,7 @@ public static class HistoryService
         var scope = UserProfileService.Scope(id);
         var json = await SecureStorage.Default.GetAsync($"watch-history.{scope}");
         var result = json is null ? new List<WatchEntry>() : JsonSerializer.Deserialize<List<WatchEntry>>(json) ?? [];
+        cached[scope] = result;
         counts[scope] = result.Count; return result;
     }
     public static async Task RecordAsync(string id, int version, MediaItem item, double position)
@@ -136,10 +144,15 @@ public static class HistoryService
             var scope = UserProfileService.Scope(id);
             var entries = await LoadAsync(id);
             if (AppServices.ActiveAccount?.Id != id || AppServices.SessionVersion != version) return;
+            var channelOrderChanged = item.Kind == MediaKind.Channel &&
+                (entries.FirstOrDefault(e => e.Item.Kind == MediaKind.Channel) is not { } latest ||
+                 CatalogPreferences.ItemKey(latest.Item) != CatalogPreferences.ItemKey(item));
             entries.RemoveAll(e => CatalogPreferences.ItemKey(e.Item) == CatalogPreferences.ItemKey(item));
             entries.Insert(0, new(item, DateTimeOffset.UtcNow, Math.Max(0, position)));
             await SecureStorage.Default.SetAsync($"watch-history.{scope}", JsonSerializer.Serialize(entries.Take(100)));
+            cached[scope] = entries.Take(100).ToArray();
             counts[scope] = Math.Min(100, entries.Count);
+            if (channelOrderChanged) Changed?.Invoke();
             _ = TvDiscoveryService.RefreshAsync();
         }
         finally { gate.Release(); }
@@ -148,7 +161,7 @@ public static class HistoryService
     {
         var scope = UserProfileService.Scope(id);
         await gate.WaitAsync();
-        try { SecureStorage.Default.Remove($"watch-history.{scope}"); counts[scope] = 0; }
+        try { SecureStorage.Default.Remove($"watch-history.{scope}"); counts[scope] = 0; cached.Remove(scope); Changed?.Invoke(); }
         finally { gate.Release(); }
     }
     public static async Task DeleteAccountAsync(string id)
@@ -161,6 +174,7 @@ public static class HistoryService
                 var scope = UserProfileService.Scope(id, profile.Id);
                 SecureStorage.Default.Remove($"watch-history.{scope}");
                 counts.Remove(scope);
+                cached.Remove(scope);
             }
         }
         finally { gate.Release(); }
@@ -169,7 +183,7 @@ public static class HistoryService
     {
         var scope = UserProfileService.Scope(id, profileId);
         await gate.WaitAsync();
-        try { SecureStorage.Default.Remove($"watch-history.{scope}"); counts.Remove(scope); }
+        try { SecureStorage.Default.Remove($"watch-history.{scope}"); counts.Remove(scope); cached.Remove(scope); }
         finally { gate.Release(); }
     }
     public static async Task<IReadOnlyList<WatchEntry>> ExportAsync(string id, string profileId)
@@ -185,7 +199,9 @@ public static class HistoryService
         try
         {
             await SecureStorage.Default.SetAsync($"watch-history.{scope}", JsonSerializer.Serialize(entries.Take(100)));
+            cached[scope] = entries.Take(100).ToArray();
             counts[scope] = Math.Min(100, entries.Count);
+            Changed?.Invoke();
         }
         finally { gate.Release(); }
     }

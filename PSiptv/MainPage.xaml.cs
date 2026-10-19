@@ -1104,6 +1104,7 @@ public partial class MainPage : ContentPage
         }
         else
             filtered = CatalogOptionsService.Current.Filter(catalog, MediaKind.Channel, selectedCategory, query);
+        if (IsFavoritesTab) filtered = HistoryService.OrderFavoriteChannels(filtered);
         visibleRemoteChannels = (IsLiveTvTab || IsFavoritesTab) && !guide
             ? filtered.Where(item => item.Kind == MediaKind.Channel).ToArray()
             : [];

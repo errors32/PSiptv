@@ -92,7 +92,7 @@ public sealed class FavoritesPage : LocalizedPage
                 _ => true
             })
             && i.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).OrderBy(i => i.Name).ToList();
-        items.ItemsSource = PodcastFeed.OrderByUnplayed(result, feedEpisodes, heard);
+        items.ItemsSource = PodcastFeed.OrderByUnplayed(HistoryService.OrderFavoriteChannels(result), feedEpisodes, heard);
         count.Text = LanguageService.Format("{0} favoritos · {1}", result.Count,
             AppServices.ActiveAccount?.Name ?? LanguageService.Text("Abra uma lista"));
     }
