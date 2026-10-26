@@ -272,7 +272,7 @@ A versão 1.6.1 acrescenta início personalizável, pré-visualização nativa e
 
 ### Atualizações Windows
 
-A distribuição Windows é um ZIP portátil autónomo. Na primeira instalação, descarregue o pacote `PSiptv.v1.7.9.windows-x64.zip` nos [Releases](https://github.com/errors32/PSiptv/releases/tag/1.7.9), extraia-o para uma pasta com permissões de escrita e execute `PSiptv.exe`. Instalações anteriores precisam desta instalação manual inicial para receber o atualizador.
+A distribuição Windows é um ZIP portátil autónomo. Na primeira instalação, descarregue o pacote `PSiptv.v1.7.10.windows-x64.zip` nos [Releases](https://github.com/errors32/PSiptv/releases/tag/1.7.10), extraia-o para uma pasta com permissões de escrita e execute `PSiptv.exe`. Instalações anteriores precisam desta instalação manual inicial para receber o atualizador.
 
 Em **Configurações → Sobre → Atualizações da aplicação** pode verificar novas versões, ativar a procura diária e configurar o token de leitura do repositório privado (Contents: Read). O atualizador escolhe a versão estável mais recente com pacote para a arquitetura do processo, valida tamanho e SHA-256, fecha a aplicação, substitui a pasta e volta a abrir. Os dados e o armazenamento seguro mantêm-se fora da pasta dos binários. A pasta anterior fica ao lado da instalação com o sufixo `.backup-…`; falhas na substituição repõem a pasta anterior. O diagnóstico fica em `%TEMP%\PSiptv-windows-update.log`. O diretório pai deve permitir escrita e todas as outras instâncias devem estar fechadas.
 

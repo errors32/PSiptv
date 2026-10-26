@@ -44,6 +44,9 @@ public sealed class PodcastsPage : LocalizedPage
     private readonly View information;
     private readonly View artwork;
     private bool landscape;
+    private double listWidth;
+    private int listLayoutRevision;
+    private bool restoringListLayout;
 
     public PodcastsPage(MediaItem? podcast = null, bool favoritesOnly = false, bool continuing = false)
     {
@@ -56,10 +59,13 @@ public sealed class PodcastsPage : LocalizedPage
         list.RemainingItemsThresholdReached += (_, _) => AppendPage();
         list.Scrolled += (_, e) =>
         {
+            if (restoringListLayout) return;
             firstVisibleIndex = e.FirstVisibleItemIndex;
             if (e.FirstVisibleItemIndex >= 0 && e.FirstVisibleItemIndex < displayed.Count)
                 scrollAnchor = displayed[e.FirstVisibleItemIndex].Id;
         };
+        list.SizeChanged += (_, _) => RefreshListAfterResize();
+        list.Unloaded += (_, _) => { listLayoutRevision++; listWidth = 0; restoringListLayout = false; };
         search.SetDynamicResource(SearchBar.TextColorProperty, "Ink");
         search.SetDynamicResource(SearchBar.PlaceholderColorProperty, "Muted");
         showAllButton = IconButton(FaIcons.Eye, "Mostrar todos os episódios", () =>
@@ -165,6 +171,35 @@ public sealed class PodcastsPage : LocalizedPage
         layout.Add(sidebarScroll);
         layout.Add(list, 0, 1);
         Content = layout;
+    }
+
+    private void RefreshListAfterResize()
+    {
+        if (list.Width <= 0 || list.Height <= 0 || Math.Abs(list.Width - listWidth) < 1) return;
+        var previousWidth = listWidth;
+        listWidth = list.Width;
+        if (previousWidth <= 0) return;
+        var revision = ++listLayoutRevision;
+        var anchor = scrollAnchor;
+        // Wait for the grid's final column width. Android can otherwise retain
+        // the narrow measurements of visible, recycled cards after rotation.
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(150), () =>
+        {
+            if (revision != listLayoutRevision || !list.IsLoaded) return;
+            restoringListLayout = true;
+            list.ItemsSource = null;
+            list.ItemsSource = displayed;
+            Dispatcher.Dispatch(() =>
+            {
+                if (revision != listLayoutRevision) return;
+                try
+                {
+                    if (anchor is not null && displayed.FirstOrDefault(e => e.Id == anchor) is { } target)
+                        list.ScrollTo(target, position: ScrollToPosition.Start, animate: false);
+                }
+                finally { restoringListLayout = false; }
+            });
+        });
     }
 
     protected override void OnSizeAllocated(double width, double height)
