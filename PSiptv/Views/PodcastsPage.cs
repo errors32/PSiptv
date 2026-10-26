@@ -35,6 +35,15 @@ public sealed class PodcastsPage : LocalizedPage
     private IReadOnlyList<MediaItem> items = [];
     private IReadOnlyDictionary<string, PodcastHeardEntry> heard = new Dictionary<string, PodcastHeardEntry>();
     private CancellationTokenSource? loading;
+    private readonly Grid layout = new() { Padding = 16, RowSpacing = 10, ColumnSpacing = 16,
+        RowDefinitions = [new(GridLength.Auto), new(GridLength.Star)],
+        ColumnDefinitions = [new(GridLength.Star)] };
+    private readonly Grid sidebar = new() { RowSpacing = 10,
+        RowDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto)] };
+    private readonly ScrollView sidebarScroll;
+    private readonly View information;
+    private readonly View artwork;
+    private bool landscape;
 
     public PodcastsPage(MediaItem? podcast = null, bool favoritesOnly = false, bool continuing = false)
     {
@@ -138,17 +147,52 @@ public sealed class PodcastsPage : LocalizedPage
         shortcuts.Add(IconButton(FaIcons.ArrowsRotate, "Atualizar podcasts", () => LoadAsync(force: true)), 2);
         shortcuts.IsVisible = !continuing;
         var subscription = podcast is null ? new FavoriteButton() { IsVisible = false } : new FavoriteButton { BindingContext = podcast };
-        Content = new Grid { Padding = 16, RowSpacing = 10,
-            RowDefinitions = [new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Star)] };
-        var grid = (Grid)Content;
         var heading = new Grid { ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto)] };
         heading.Add(Ui.Text(Title ?? "Podcasts", 24)); heading.Add(subscription, 1);
-        grid.Add(Ui.Stack(heading, status));
+        artwork = new LogoImage { BindingContext = podcast, WidthRequest = 88, HeightRequest = 88,
+            Aspect = Aspect.AspectFit, HorizontalOptions = LayoutOptions.Start, IsVisible = false };
+        var category = Ui.Text(podcast?.Category ?? "", 14, true);
+        category.IsVisible = !string.IsNullOrWhiteSpace(podcast?.Category);
+        information = Ui.Stack(artwork, heading, category, status);
         var episodeFilters = new Grid { ColumnSpacing = 8,
             ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto)] };
         episodeFilters.Add(dateOrder); episodeFilters.Add(showAllButton, 1); episodeFilters.Add(markAllButton, 2);
         episodeFilters.IsVisible = podcast is not null || favoritesOnly;
-        grid.Add(search, 0, 1); grid.Add(Ui.Stack(shortcuts, actions, episodeFilters), 0, 2); grid.Add(list, 0, 3);
+        sidebar.Add(information);
+        sidebar.Add(search, 0, 1);
+        sidebar.Add(Ui.Stack(shortcuts, actions, episodeFilters), 0, 2);
+        sidebarScroll = new ScrollView { Content = sidebar, Orientation = ScrollOrientation.Neither };
+        layout.Add(sidebarScroll);
+        layout.Add(list, 0, 1);
+        Content = layout;
+    }
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        if (width <= 0 || height <= 0) return;
+        var horizontal = width > height;
+        if (horizontal != landscape)
+        {
+            landscape = horizontal;
+            layout.RowDefinitions = horizontal ? [new(GridLength.Star)] :
+                [new(GridLength.Auto), new(GridLength.Star)];
+            layout.ColumnDefinitions = horizontal ? [new(new GridLength(1, GridUnitType.Star)), new(GridLength.Star)] :
+                [new(GridLength.Star)];
+            Grid.SetRow(list, horizontal ? 0 : 1);
+            Grid.SetColumn(list, horizontal ? 1 : 0);
+            Grid.SetRow(search, horizontal ? 0 : 1);
+            Grid.SetRow(information, horizontal ? 1 : 0);
+            sidebarScroll.Orientation = horizontal ? ScrollOrientation.Vertical : ScrollOrientation.Neither;
+            artwork.IsVisible = horizontal && !string.IsNullOrWhiteSpace(podcast?.Logo);
+        }
+        // Keep the sidebar compact, leaving most of the width and all of the height for the list.
+        if (horizontal)
+        {
+            var sidebarWidth = Math.Clamp((width - 48) * 0.32, 220, 320);
+            if (layout.ColumnDefinitions[0].Width.Value != sidebarWidth)
+                layout.ColumnDefinitions[0].Width = new GridLength(sidebarWidth);
+        }
     }
 
     protected override async void OnAppearing()
