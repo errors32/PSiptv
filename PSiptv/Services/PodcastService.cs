@@ -37,13 +37,31 @@ public static class PodcastService
     public static async Task<IReadOnlyList<MediaItem>> EpisodesAsync(MediaItem podcast, CancellationToken token, bool refresh = false)
     {
         var saved = await PodcastCacheService.ReadAsync(podcast.Url, token);
-        if (!refresh && saved is not null && DateTimeOffset.UtcNow - saved.FetchedAt < TimeSpan.FromMinutes(10)) return saved.Items;
+        if (!refresh && saved is not null && DateTimeOffset.UtcNow - saved.FetchedAt < TimeSpan.FromMinutes(10))
+        {
+            await PodcastCacheService.SaveAsync(podcast.Id, saved.Items, token);
+            return saved.Items;
+        }
         var episodes = PodcastFeed.Parse(await client.GetStringAsync(WebAddress.Require(podcast.Url), token), podcast);
         await PodcastCacheService.SaveAsync(podcast.Url, episodes, token);
+        await PodcastCacheService.SaveAsync(podcast.Id, episodes, token);
         return episodes;
     }
 
-    public static async Task OpenAsync(Page owner, MediaItem item)
+    public static async Task<IReadOnlyList<MediaItem>> QueueAsync(MediaItem item, CancellationToken token)
+    {
+        if (string.IsNullOrEmpty(item.ParentSeriesId)) return [];
+        var feed = FavoritesService.Items.FirstOrDefault(f => f.Id == item.ParentSeriesId && f.HasEpisodes);
+        try
+        {
+            if (feed is not null) return await EpisodesAsync(feed, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+        return (await PodcastCacheService.ReadAsync(item.ParentSeriesId, token))?.Items ?? [];
+    }
+
+    public static async Task OpenAsync(Page owner, MediaItem item, IReadOnlyList<MediaItem>? episodes = null)
     {
         if (item.HasEpisodes) { await owner.Navigation.PushAsync(new PodcastsPage(item)); return; }
         var snapshot = await FavoritesService.SnapshotAsync();
@@ -52,6 +70,7 @@ public static class PodcastService
         if (AppServices.ActiveAccount is { } account &&
             await OfflineDownloadService.FindAsync(account.Id, UserProfileService.Active.Id, item) is { IsComplete: true } download)
             item = OfflineDownloadService.PlaybackItem(download);
-        await PlaybackService.PlayAsync(owner, item, resume: resume);
+        episodes ??= await QueueAsync(item, CancellationToken.None);
+        await PlaybackService.PlayAsync(owner, item, episodes, resume);
     }
 }

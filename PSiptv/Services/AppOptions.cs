@@ -10,6 +10,7 @@ public static class AppOptions
     public static bool Pip => Preferences.Default.Get("pip", true);
     public static string StreamFormat => Preferences.Default.Get("streamFormat", "auto");
     public static bool AutoPlay => Preferences.Default.Get("episodeAutoPlay", false);
+    public static bool PodcastAutoPlay => Preferences.Default.Get("podcastAutoPlay", true);
     public static int AutoPlaySeconds => Math.Clamp(Preferences.Default.Get("autoPlaySeconds", 30), 0, 60);
     public static bool AutoClearCache => Preferences.Default.Get("autoClearCache", false);
     public static bool Subtitles => Preferences.Default.Get("subtitles", true);

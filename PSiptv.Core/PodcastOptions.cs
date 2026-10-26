@@ -5,6 +5,14 @@ public sealed record PodcastOptions(bool AutomaticDownloads = false, bool WifiOn
 
 public static class PodcastPolicy
 {
+    public static MediaItem? NextEpisode(MediaItem current, IEnumerable<MediaItem> episodes)
+    {
+        if (current.PublishedAt is not { } date || string.IsNullOrEmpty(current.ParentSeriesId)) return null;
+        return episodes.Where(e => e.Id != current.Id && !e.HasEpisodes &&
+                e.ParentSeriesId == current.ParentSeriesId && e.PublishedAt is { } published && published.Date > date.Date)
+            .OrderBy(e => e.PublishedAt).FirstOrDefault();
+    }
+
     public static bool CanDownloadAutomatically(PodcastOptions options, bool internet, bool wifi) =>
         options.AutomaticDownloads && internet && (!options.WifiOnly || wifi);
 

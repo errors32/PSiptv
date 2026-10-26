@@ -4,6 +4,23 @@ internal static class PodcastListingTests
 {
     public static void Run(Action<bool, string> check)
     {
+        var day = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+        MediaItem Dated(string id, int days, string parent = "podcast:feed") =>
+            new("podcast:" + id, id, "", MediaKind.Podcast, ParentSeriesId: parent, PublishedAt: day.AddDays(days));
+        var current = Dated("current", 0);
+        var tomorrow = Dated("tomorrow", 1);
+        var later = Dated("later", 3);
+        check(PodcastPolicy.NextEpisode(current, [later, tomorrow, current, Dated("old", -1)]) == tomorrow,
+            "Próximo podcast avança por data mesmo com a lista do mais recente para o mais antigo");
+        check(PodcastPolicy.NextEpisode(current, [Dated("other", 1, "podcast:other"), later, current]) == later,
+            "Próximo podcast ignora outros programas e usa a data seguinte disponível quando há dias sem episódios");
+        check(PodcastPolicy.NextEpisode(current, [current, Dated("same-day", 0)]) is null &&
+            PodcastPolicy.NextEpisode(current with { PublishedAt = null }, [tomorrow]) is null,
+            "Próximo podcast não repete o mesmo dia nem adivinha a sequência sem data");
+        check(AudioPlaybackPolicy.IsInFinalMinute(540, 600) && AudioPlaybackPolicy.IsInFinalMinute(599, 600) &&
+            !AudioPlaybackPolicy.IsInFinalMinute(539, 600) && !AudioPlaybackPolicy.IsInFinalMinute(0, 30) &&
+            !AudioPlaybackPolicy.IsInFinalMinute(20, 0) && !AudioPlaybackPolicy.IsInFinalMinute(double.NaN, 600),
+            "Marca como visto a partir do último minuto com duração conhecida e reprodução iniciada");
         MediaItem Feed(string id) => new("podcast:" + id, id, "", MediaKind.Podcast, HasEpisodes: true);
         MediaItem Episode(string id) => new("podcast:" + id, id, "", MediaKind.Podcast);
         var small = Feed("small"); var large = Feed("large"); var unknown = Feed("unknown"); var zero = Feed("zero");

@@ -14,6 +14,8 @@ public sealed class PodcastSettingsPage : LocalizedPage
         var profile = UserProfileService.Active.Id;
         var options = account is null ? new PodcastOptions() : PodcastAutomationService.Options(account.Id, profile);
         var automatic = new Switch { IsToggled = options.AutomaticDownloads };
+        var autoPlay = new Switch { IsToggled = AppOptions.PodcastAutoPlay };
+        autoPlay.Toggled += (_, e) => Preferences.Default.Set("podcastAutoPlay", e.Value);
         var wifi = new Switch { IsToggled = options.WifiOnly };
         var deletePlayed = new Switch { IsToggled = options.DeletePlayedDownloads };
         var sizes = new[] { 128, 256, 512, 1024, 2048, 5120, 10240 };
@@ -51,6 +53,8 @@ public sealed class PodcastSettingsPage : LocalizedPage
             RefreshSyncStatus();
         });
         var body = Ui.Stack(
+            Ui.Card(Ui.Stack(Ui.Text("Reprodução", 20), Ui.Text("Avançar automaticamente para o próximo episódio"), autoPlay,
+                Ui.Text("Quando um episódio termina, reproduz o episódio da data seguinte disponível do mesmo podcast.", 13, true))),
             Ui.Card(Ui.Stack(Ui.Text("Downloads automáticos", 20),
                 Ui.Text("Descarregar automaticamente"), automatic,
                 Ui.Text("Desligado por defeito. Verifica novos episódios enquanto a aplicação está aberta. Na primeira ativação descarrega apenas o episódio mais recente de cada podcast escolhido.", 13, true),

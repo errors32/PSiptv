@@ -51,6 +51,7 @@ public sealed class PlaybackView : ContentView
     private string accountId = "";
     private int session;
     private int ticks;
+    private bool completionRecorded;
     private bool podcastVideoMode;
     private string podcastPlaybackAudioUrl = "";
     private float podcastRate = 1;
@@ -181,7 +182,8 @@ public sealed class PlaybackView : ContentView
     private void NotifyControlsVisibilityChanged(bool visible) => ControlsVisibilityChanged?.Invoke(visible);
     private async void RecordPodcastCompletion()
     {
-        if (current is not { } item) return;
+        if (current is not { } item || completionRecorded || !recordHistory) return;
+        completionRecorded = true;
         if (!PodcastFeed.IsPodcast(item))
         {
             await Task.WhenAll(UpdateViewingStateAsync(ViewingState.Completed), SaveDiagnosticAsync("Concluído"));
@@ -384,6 +386,8 @@ public sealed class PlaybackView : ContentView
             }
 #endif
             UpdateExternalSubtitle();
+            if (IsPlaying && current is { Kind: not MediaKind.Channel } &&
+                AudioPlaybackPolicy.IsInFinalMinute(Position, Duration)) RecordPodcastCompletion();
             if (this.recordHistory && ++ticks % 40 == 0 && current is { } item && IsPlaying)
             { try { await HistoryService.RecordAsync(accountId, session, item, Position); await SavePodcastProgressAsync(); } catch { /* Playback must survive storage exhaustion. */ } }
             if (current is { Kind: not MediaKind.Channel } && IsPlaying)
@@ -509,9 +513,13 @@ public sealed class PlaybackView : ContentView
 #endif
     }
 
-    public async Task SeekByAsync(int seconds)
+    public Task SeekByAsync(int seconds) =>
+        SeekToAsync(AudioPlaybackPolicy.SeekTarget(Position, Duration, seconds));
+
+    public async Task SeekToAsync(double seconds)
     {
-        var target = AudioPlaybackPolicy.SeekTarget(Position, Duration, seconds);
+        if (!CanSeek || !double.IsFinite(seconds)) return;
+        var target = Math.Clamp(seconds, 0, Duration > 0 ? Duration : double.MaxValue);
 #if ANDROID || WINDOWS
         if (player?.IsSeekable == true) player.Time = (long)(target * 1000);
         ShowControlsTemporarily();
@@ -650,6 +658,7 @@ public sealed class PlaybackView : ContentView
             await ReleaseAsync();
             if (!operation.IsCurrent || request != generation || version != AppServices.SessionVersion) return;
             current = item; accountId = account?.Id ?? ""; session = version;
+            completionRecorded = false;
 #if ANDROID || WINDOWS
 #if WINDOWS
             var swapChainOptions = await WaitForWindowsVideoHostAsync(request);

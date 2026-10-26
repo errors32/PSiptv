@@ -11,10 +11,30 @@ public sealed class AudioMiniPlayerView : ContentView
     private readonly Button backward;
     private readonly Button forward;
     private readonly IDispatcherTimer timer;
+    private readonly Slider timeline = new() { Minimum = 0, Maximum = 1 };
+    private bool dragging;
+    private PlaybackView? seekingPlayer;
 
     public AudioMiniPlayerView()
     {
         IsVisible = false;
+        SemanticProperties.SetDescription(timeline, LanguageService.Text("Posição de reprodução"));
+        timeline.DragStarted += (_, _) => { dragging = true; seekingPlayer = AudioPlaybackService.Player; };
+        timeline.ValueChanged += (_, _) =>
+        {
+            if (dragging && seekingPlayer is { } player) UpdatePosition(timeline.Value, player.Duration);
+        };
+        timeline.DragCompleted += async (_, _) =>
+        {
+            var player = seekingPlayer;
+            var target = timeline.Value;
+            try
+            {
+                if (player is not null && player == AudioPlaybackService.Player) await player.SeekToAsync(target);
+            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+            finally { dragging = false; seekingPlayer = null; Refresh(); }
+        };
         title.LineBreakMode = LineBreakMode.TailTruncation;
         toggle = Icon(FaIcons.Play, "Reproduzir ou pausar", async () =>
         {
@@ -44,7 +64,7 @@ public sealed class AudioMiniPlayerView : ContentView
         {
             Margin = new Thickness(8, 4, 8, 8), Padding = 10,
             StrokeShape = new RoundRectangle { CornerRadius = 16 },
-            Content = new VerticalStackLayout { Spacing = 4, Children = { heading, buttons } }
+            Content = new VerticalStackLayout { Spacing = 4, Children = { heading, timeline, buttons } }
         };
         Content.SetDynamicResource(BackgroundColorProperty, "Surface");
         timer = Dispatcher.CreateTimer();
@@ -82,13 +102,23 @@ public sealed class AudioMiniPlayerView : ContentView
         IsVisible = player is not null && item is not null && !PictureInPictureService.IsActive;
         if (player is null || item is null) return;
         title.Text = item.Name;
-        position.Text = player.Duration > 0
-            ? $"{TimeSpan.FromSeconds(Math.Max(0, player.Position)):hh\\:mm\\:ss} / {TimeSpan.FromSeconds(player.Duration):hh\\:mm\\:ss}"
-            : LanguageService.Text(PortugueseRadioService.IsRadio(item) ? "Rádio em direto" : "Podcast");
+        if (!dragging)
+        {
+            var maximum = Math.Max(1, player.Duration);
+            if (timeline.Value > maximum) timeline.Value = maximum;
+            timeline.Maximum = maximum;
+            timeline.Value = Math.Clamp(player.Position, 0, timeline.Maximum);
+            if (player.Duration > 0) UpdatePosition(player.Position, player.Duration);
+            else position.Text = LanguageService.Text(PortugueseRadioService.IsRadio(item) ? "Rádio em direto" : "Podcast");
+        }
+        timeline.IsEnabled = player.CanSeek && player.Duration > 0;
         toggle.Text = player.IsPlaying ? FaIcons.Pause : FaIcons.Play;
         SemanticProperties.SetDescription(toggle, LanguageService.Text(player.IsPlaying ? "Pausar" : "Reproduzir"));
         backward.IsEnabled = forward.IsEnabled = player.CanSeek;
     }
+
+    private void UpdatePosition(double seconds, double duration) => position.Text =
+        $"{TimeSpan.FromSeconds(Math.Max(0, seconds)):hh\\:mm\\:ss} / {TimeSpan.FromSeconds(Math.Max(0, duration)):hh\\:mm\\:ss}";
 
     private static Button Icon(string glyph, string description, Func<Task> action)
     {

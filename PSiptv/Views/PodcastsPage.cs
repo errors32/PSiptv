@@ -130,7 +130,7 @@ public sealed class PodcastsPage : LocalizedPage
             return Ui.FocusableCard(row, async value =>
             {
                 if (value is not MediaItem item) return;
-                try { await PodcastService.OpenAsync(this, item); }
+                try { await PodcastService.OpenAsync(this, item, podcast is not null ? items : null); }
                 catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
             }, tapTarget: details);
         });

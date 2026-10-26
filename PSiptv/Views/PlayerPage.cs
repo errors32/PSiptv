@@ -558,21 +558,37 @@ public sealed class PlayerPage : LocalizedPage
 
     private async Task NextAsync()
     {
-        if (!AppOptions.AutoPlay || countdown is not null || lifetime.IsCancellationRequested) return;
-        var index = queue.ToList().FindIndex(i => CatalogPreferences.ItemKey(i) == CatalogPreferences.ItemKey(current));
-        if (index < 0 || index + 1 >= queue.Count) return;
+        var podcast = PodcastFeed.IsPodcast(current);
+        if (!(podcast ? AppOptions.PodcastAutoPlay : AppOptions.AutoPlay) || countdown is not null || lifetime.IsCancellationRequested) return;
+        var session = AppServices.SessionVersion;
         countdown = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-        cancelNext.IsVisible = true;
-        nextMessage.IsVisible = true;
         try
         {
-            for (var seconds = AppOptions.AutoPlaySeconds; seconds > 0; seconds--)
-            { nextMessage.Text = LanguageService.Format("Próximo episódio em {0} s · {1}", seconds, queue[index + 1].Name); await Task.Delay(1000, countdown.Token); }
+            MediaItem? next;
+            if (podcast)
+            {
+                var episodes = queue.Count > 0 ? queue : await PodcastService.QueueAsync(current, countdown.Token);
+                next = PodcastPolicy.NextEpisode(current, episodes);
+            }
+            else
+            {
+                var index = queue.ToList().FindIndex(i => CatalogPreferences.ItemKey(i) == CatalogPreferences.ItemKey(current));
+                next = index >= 0 && index + 1 < queue.Count ? queue[index + 1] : null;
+            }
+            if (next is null) return;
+            cancelNext.IsVisible = true;
+            nextMessage.IsVisible = true;
+            for (var seconds = podcast ? 0 : AppOptions.AutoPlaySeconds; seconds > 0; seconds--)
+            { nextMessage.Text = LanguageService.Format("Próximo episódio em {0} s · {1}", seconds, next.Name); await Task.Delay(1000, countdown.Token); }
             countdown.Token.ThrowIfCancellationRequested();
             if (AudioPlaybackService.IsAudio(current) && AudioPlaybackService.Player != player) return;
             if (AppServices.ActiveAccount is null) return;
             // All episodes belong to the series authorized before opening this page.
-            current = queue[index + 1]; Title = current.Name; mediaTitle.Text = current.Name; favorite.BindingContext = current; nextMessage.Text = "";
+            if (podcast && await OfflineDownloadService.FindAsync(AppServices.ActiveAccount.Id, UserProfileService.Active.Id, next) is { IsComplete: true } download)
+                next = OfflineDownloadService.PlaybackItem(download);
+            countdown.Token.ThrowIfCancellationRequested();
+            if (session != AppServices.SessionVersion || AudioPlaybackService.IsAudio(current) && AudioPlaybackService.Player != player) return;
+            current = next; Title = current.Name; mediaTitle.Text = current.Name; favorite.BindingContext = current; nextMessage.Text = "";
             await player.PlayAsync(current);
         }
         catch (OperationCanceledException) { }
