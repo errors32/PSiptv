@@ -61,7 +61,11 @@ public static class AndroidAppUpdateService
         Preferences.Default.Remove(LastAutomaticCheckKey);
     }
 
-    public static async Task<AndroidAppRelease?> CheckLatestAsync(CancellationToken cancellationToken = default)
+    public static Task<AndroidAppRelease?> CheckLatestAsync(CancellationToken cancellationToken = default) => CheckReleaseAsync(false, cancellationToken);
+
+    public static Task<AndroidAppRelease?> CheckLatestWearAsync(CancellationToken cancellationToken = default) => CheckReleaseAsync(true, cancellationToken);
+
+    private static async Task<AndroidAppRelease?> CheckReleaseAsync(bool wear, CancellationToken cancellationToken)
     {
         var token = await ReadTokenAsync();
         await checkGate.WaitAsync(cancellationToken);
@@ -79,12 +83,13 @@ public static class AndroidAppUpdateService
 
             if (!ReleaseVersion.TryParse(release.TagName, out var available))
                 throw new InvalidOperationException($"A tag «{release.TagName}» não é uma versão válida (ex.: v1.3.0).");
+            if (release.Draft || release.Prerelease) throw new InvalidOperationException("A Release mais recente não é uma versão estável pública.");
             if (!ReleaseVersion.TryParse(AppInfo.Current.VersionString, out var installed))
                 throw new InvalidOperationException("A versão instalada não pode ser comparada com a Release.");
-            if (available.CompareTo(installed) <= 0) return null;
+            if (!wear && available.CompareTo(installed) <= 0) return null;
 
             var releaseVersion = release.TagName.Trim().TrimStart('v', 'V');
-            var expectedName = Metadata("GitHubReleaseAssetName")
+            var expectedName = wear ? WearInstallPolicy.AssetName(release.TagName) : Metadata("GitHubReleaseAssetName")
                 .Replace("{version}", releaseVersion, StringComparison.OrdinalIgnoreCase);
             var uploadedApks = release.Assets.Where(candidate =>
                 candidate.State.Equals("uploaded", StringComparison.OrdinalIgnoreCase) &&
@@ -93,11 +98,13 @@ public static class AndroidAppUpdateService
                 candidate.Name.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
             // A Release with exactly one uploaded APK is unambiguous and also
             // supports older or manually named assets.
-            asset ??= uploadedApks.Length == 1 ? uploadedApks[0] : null;
+            if (!wear) asset ??= uploadedApks.Length == 1 ? uploadedApks[0] : null;
             if (asset is null)
                 throw new InvalidOperationException($"A Release {release.TagName} não contém o APK esperado «{expectedName}».");
             if (asset.Size <= 0 || string.IsNullOrWhiteSpace(asset.Url))
                 throw new InvalidOperationException("O APK publicado na Release está incompleto.");
+            if (wear && (asset.Size > WearInstallPolicy.MaximumApkBytes || !WearInstallPolicy.ValidDigest(asset.Digest)))
+                throw new InvalidDataException("O APK do relógio não tem tamanho ou SHA-256 válido na Release.");
 
             return new AndroidAppRelease(release.TagName, string.IsNullOrWhiteSpace(release.Name) ? release.TagName : release.Name,
                 release.Body ?? "", release.PublishedAt, asset.Name, asset.Size, asset.Url, asset.Digest);
@@ -105,9 +112,19 @@ public static class AndroidAppUpdateService
         finally { checkGate.Release(); }
     }
 
-    public static async Task<string> DownloadAsync(AndroidAppRelease release,
-        IProgress<AppUpdateDownloadProgress>? progress, CancellationToken cancellationToken)
+    public static Task<string> DownloadAsync(AndroidAppRelease release,
+        IProgress<AppUpdateDownloadProgress>? progress, CancellationToken cancellationToken) => DownloadCoreAsync(release, progress, cancellationToken, false);
+
+    public static Task<string> DownloadWearAsync(AndroidAppRelease release,
+        IProgress<AppUpdateDownloadProgress>? progress, CancellationToken cancellationToken) => DownloadCoreAsync(release, progress, cancellationToken, true);
+
+    private static async Task<string> DownloadCoreAsync(AndroidAppRelease release,
+        IProgress<AppUpdateDownloadProgress>? progress, CancellationToken cancellationToken, bool wear)
     {
+        if (wear && (release.AssetName != WearInstallPolicy.AssetName(release.Tag) || !WearInstallPolicy.ValidDigest(release.Digest) ||
+            release.AssetSize is <= 0 or > WearInstallPolicy.MaximumApkBytes)) throw new InvalidDataException("APK do relógio inválido.");
+        if (!Uri.TryCreate(release.AssetApiUrl, UriKind.Absolute, out var assetUri) || assetUri.Scheme != "https" || assetUri.Host != "api.github.com")
+            throw new InvalidDataException("O APK não pertence à API GitHub configurada.");
         var token = await ReadTokenAsync();
         var updateFolder = Path.Combine(FileSystem.CacheDirectory, "updates");
         Directory.CreateDirectory(updateFolder);
@@ -136,6 +153,7 @@ public static class AndroidAppUpdateService
                 await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
                 hash.AppendData(buffer, 0, count);
                 received += count;
+                if (received > release.AssetSize) throw new InvalidDataException("O APK excede o tamanho anunciado pela Release.");
                 progress?.Report(new(received, release.AssetSize));
             }
             await output.FlushAsync(cancellationToken);
@@ -148,7 +166,8 @@ public static class AndroidAppUpdateService
                     Convert.FromHexString(actualDigest), Convert.FromHexString(digest[7..])))
                 throw new InvalidDataException("A verificação SHA-256 do APK falhou.");
 
-            ValidateApk(temporary);
+            if (wear) ValidateWearApk(temporary);
+            else ValidateApk(temporary);
             File.Move(temporary, destination, true);
             return destination;
         }
@@ -223,6 +242,29 @@ public static class AndroidAppUpdateService
         var installedCode = OperatingSystem.IsAndroidVersionAtLeast(28) ? installed.LongVersionCode : installed.VersionCode;
         if (archiveCode <= installedCode)
             throw new InvalidDataException("O versionCode do APK não é superior ao da aplicação instalada.");
+    }
+
+    public static (long Code, string Name) ValidateWearApk(string path)
+    {
+        var manager = Android.App.Application.Context.PackageManager ?? throw new InvalidOperationException("Não foi possível validar o APK do relógio.");
+        var flags = PackageInfoFlags.Configurations | (OperatingSystem.IsAndroidVersionAtLeast(28) ? PackageInfoFlags.SigningCertificates : PackageInfoFlags.Signatures);
+        var archive = manager.GetPackageArchiveInfo(path, flags) ?? throw new InvalidDataException("O ficheiro não é um APK válido.");
+        if (archive.PackageName != WearInstallPolicy.PackageName || archive.ReqFeatures?.Any(feature => feature.Name == "android.hardware.type.watch") != true)
+            throw new InvalidDataException("Este APK não é o PSiptv Remote para Wear OS.");
+        var phone = manager.GetPackageInfo(Android.App.Application.Context.PackageName!, flags)!;
+        var expected = Signers(phone);
+        var actual = Signers(archive);
+        if (expected.Length == 0 || !expected.Order().SequenceEqual(actual.Order()))
+            throw new InvalidDataException("A assinatura do APK do relógio não coincide com a aplicação instalada no telemóvel.");
+        var code = OperatingSystem.IsAndroidVersionAtLeast(28) ? archive.LongVersionCode : archive.VersionCode;
+        if (code <= 0) throw new InvalidDataException("A versão do APK do relógio é inválida.");
+        return (code, archive.VersionName ?? "");
+    }
+
+    private static string[] Signers(PackageInfo package)
+    {
+        var signatures = OperatingSystem.IsAndroidVersionAtLeast(28) ? package.SigningInfo?.GetApkContentsSigners() : package.Signatures;
+        return signatures?.Select(signature => Convert.ToHexString(SHA256.HashData(signature.ToByteArray()!))).ToArray() ?? [];
     }
 
     private static void OpenInstaller(MainActivity activity, string apkPath)
@@ -306,6 +348,8 @@ public static class AndroidAppUpdateService
 
     private sealed class GitHubRelease
     {
+        [JsonPropertyName("draft")] public bool Draft { get; init; }
+        [JsonPropertyName("prerelease")] public bool Prerelease { get; init; }
         [JsonPropertyName("tag_name")] public string TagName { get; init; } = "";
         [JsonPropertyName("name")] public string? Name { get; init; }
         [JsonPropertyName("body")] public string? Body { get; init; }

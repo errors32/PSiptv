@@ -54,6 +54,8 @@ public sealed partial class SettingsPage
 #if ANDROID
         items.Add(ActionRow(FaIcons.Download, "Atualizações da aplicação",
             () => Navigation.PushAsync(new AndroidAppUpdatePage())));
+        items.Add(ActionRow(FaIcons.Download, "Instalar / atualizar relógio",
+            () => Navigation.PushAsync(new WearInstallPage())));
 #elif WINDOWS
         items.Add(ActionRow(FaIcons.Download, "Atualizações da aplicação",
             () => Navigation.PushAsync(new WindowsAppUpdatePage())));

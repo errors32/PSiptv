@@ -35,7 +35,7 @@
 		<ApplicationId>com.PS.PSiptv</ApplicationId>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>1.7.11</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>1.7.12</ApplicationDisplayVersion>
 
 		<!-- Android uses this integer to decide whether an APK is an update. It must
 		     increase for every package distributed to an existing installation. -->
@@ -137,6 +137,15 @@
         <PackageReference Include="LibVLCSharp.MAUI" Version="3.10.1" />
     </ItemGroup>
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+        <AndroidJavaSource Include="Platforms/Android/Java/*.java" />
+        <AndroidJavaSource Include="Platforms/Android/JavaTests/*.java" Condition="'$(Configuration)' == 'Debug' and '$(WearInstallerSmoke)' == 'true'" />
+        <AndroidMavenLibrary Include="com.github.MuntashirAkon:libadb-android" Version="3.1.1" Repository="https://jitpack.io" Bind="false" />
+        <AndroidMavenLibrary Include="com.github.MuntashirAkon.spake2-java:spake2-android" Version="2.2.1" Repository="https://jitpack.io" Bind="false" />
+        <AndroidMavenLibrary Include="org.bouncycastle:bcprov-jdk15to18" Version="1.81" Bind="false" />
+        <AndroidMavenLibrary Include="org.conscrypt:conscrypt-android" Version="2.5.3" Bind="false" />
+        <!-- The KMP annotation parent is metadata only; MAUI already supplies
+             annotation-jvm 1.9.1 through Xamarin.AndroidX.Annotation 1.9.1.5. -->
+        <AndroidIgnoredJavaDependency Include="androidx.annotation:annotation:1.9.1" />
         <PackageReference Include="VideoLAN.LibVLC.Android" Version="3.7.0-beta" />
         <!-- This Cast binding generation matches the AndroidX versions used by
              MAUI 10.0.60, avoiding duplicate Fragment/KTX classes at deploy. -->

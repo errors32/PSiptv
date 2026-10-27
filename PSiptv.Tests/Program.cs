@@ -801,6 +801,7 @@ await BluetoothRemoteTests.RunAsync(Check);
 RemoteChannelListTests.Run(Check);
 await WearRemoteTests.RunAsync(Check);
 await WearBluetoothTests.RunAsync(Check);
+WearInstallTests.Run(Check);
 Console.WriteLine($"\n{passed} verificações concluídas.");
 await RegressionTests.RunAsync();
 }

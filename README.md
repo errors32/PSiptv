@@ -1,9 +1,15 @@
 # PSiptv
 
-A release **1.7.11** inclui `PSiptv.v1.7.11.apk` para telemóvel/Android TV,
-`PSiptv.Remote.Wear.v1.7.11.apk` para o relógio e o pacote Windows x64.
+A release **1.7.12** inclui `PSiptv.v1.7.12.apk` para telemóvel/Android TV,
+`PSiptv.Remote.Wear.v1.7.12.apk` para o relógio e o pacote Windows x64.
 O comando do relógio oferece Bluetooth e Wi-Fi; os APKs oficiais usam a assinatura
-de produção existente. Consulte as [notas da versão](artifacts/RELEASE_NOTES_1.7.11.md).
+de produção existente. Consulte as [notas da versão](artifacts/RELEASE_NOTES_1.7.12.md).
+
+Em **Sobre → Instalar / atualizar relógio**, o telemóvel pode descarregar o APK
+Wear mais recente e instalá-lo diretamente no relógio, com progresso e confirmação
+da versão instalada. Na primeira utilização, autorize a depuração sem fios e
+emparelhe pelo código apresentado no relógio. A instalação usa o mesmo Wi-Fi;
+o comando remoto continua a oferecer Bluetooth. Consulte o [guia do instalador](docs/wear-install.md).
 
 Leitor IPTV em português, desenvolvido em .NET 10 / MAUI. Não inclui listas nem conteúdos pré-carregados.
 
