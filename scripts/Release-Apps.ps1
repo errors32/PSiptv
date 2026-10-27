@@ -1,4 +1,4 @@
-param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.7.15', [ValidateSet('x64','arm64')][string]$Architecture = 'x64', [switch]$IncludeWear)
+param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.7.16', [ValidateSet('x64','arm64')][string]$Architecture = 'x64', [switch]$IncludeWear)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $package = Join-Path $root "artifacts/PSiptv.v$Version.windows-$Architecture.zip"

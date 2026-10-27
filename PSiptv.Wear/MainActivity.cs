@@ -34,6 +34,7 @@ public sealed class MainActivity : Activity
     private bool useBluetooth;
     private bool foreground;
     private bool connected;
+    private bool reconnect;
     private string displayedCurrentChannelId = "";
 
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -71,6 +72,7 @@ public sealed class MainActivity : Activity
         wifi = null;
         bluetooth.Disconnect();
         connected = false;
+        reconnect = false;
     }
 
     private void StartSession()
@@ -198,19 +200,21 @@ public sealed class MainActivity : Activity
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-                if (selectedDevice is not null && connected) await RefreshStateAsync(cancellationToken);
-                else if (!useBluetooth || selectedDevice is null) await DiscoverAsync(cancellationToken);
+                if (selectedDevice is not null && (connected || reconnect))
+                    await RefreshStateAsync(cancellationToken, announceAttempt: false);
+                else if (!useBluetooth || selectedDevice is null)
+                    await DiscoverAsync(cancellationToken, announceProgress: false);
             }
             catch (System.OperationCanceledException) { break; }
         }
     }
 
-    private async Task DiscoverAsync(CancellationToken cancellationToken)
+    private async Task DiscoverAsync(CancellationToken cancellationToken, bool announceProgress = true)
     {
         if (cancellationToken.IsCancellationRequested || !await discoveryLock.WaitAsync(0)) return;
         try
         {
-            SetStatus(useBluetooth ? "A procurar o telemóvel emparelhado…" : "A procurar no Wi-Fi…");
+            if (announceProgress) SetStatus(useBluetooth ? "A procurar o telemóvel emparelhado…" : "A procurar no Wi-Fi…");
             var found = useBluetooth ? await WearPhoneClient.PairedDevicesAsync(cancellationToken) : await client.DiscoverAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             RunOnUiThread(() =>
@@ -230,22 +234,22 @@ public sealed class MainActivity : Activity
                 devicePicker.Visibility = devices.Count > 1 || (useBluetooth && devices.Count > 0) ? ViewStates.Visible : ViewStates.Gone;
                 updatingDevices = false;
                 SetConnected(false);
-                status.Text = useBluetooth
+                if (announceProgress) SetStatus(useBluetooth
                     ? devices.Count == 0 ? "Confirme a ligação ao telemóvel na aplicação Galaxy Wearable e atualize o PSiptv nos dois equipamentos."
                         : "Toque em Ligar. Mantenha uma lista aberta no PSiptv do telemóvel e o controlo Bluetooth ativo."
                     : devices.Count == 0 ? "Nenhum PSiptv encontrado. Ligue o relógio ao mesmo Wi-Fi e abra uma lista no PSiptv do telemóvel/TV."
-                        : $"{devices.Count} dispositivo(s)";
+                        : $"{devices.Count} dispositivo(s)");
             });
             var savedBluetooth = GetPreferences(Android.Content.FileCreationMode.Private)!.GetString("bluetooth.device", "");
             if (selectedDevice is not null && (!useBluetooth || selectedDevice.Key == savedBluetooth))
-                await RefreshStateAsync(cancellationToken);
+                await RefreshStateAsync(cancellationToken, announceAttempt: announceProgress);
         }
         catch (System.OperationCanceledException) { }
-        catch (Exception ex) { SetStatus(ex.Message); }
+        catch (Exception ex) { if (announceProgress) SetStatus(ex.Message); }
         finally { discoveryLock.Release(); }
     }
 
-    private async Task RefreshStateAsync(CancellationToken cancellationToken)
+    private async Task RefreshStateAsync(CancellationToken cancellationToken, bool announceAttempt = true)
     {
         if (selectedDevice is not { } device) return;
         using var request = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, selection?.Token ?? CancellationToken.None);
@@ -253,7 +257,9 @@ public sealed class MainActivity : Activity
         try
         {
             connect.Enabled = false;
-            SetStatus(useBluetooth ? "A ligar por Bluetooth…" : "A ligar por Wi-Fi…");
+            // Polling reads the current state over an already established logical
+            // connection. Announce a connection attempt only while disconnected.
+            if (!connected && announceAttempt) SetStatus(useBluetooth ? "A ligar por Bluetooth…" : "A ligar por Wi-Fi…");
             var state = await SendAsync(device, "state", "", cancellationToken);
             if (!cancellationToken.IsCancellationRequested && selectedDevice == device) ApplyState(state);
         }
@@ -292,18 +298,21 @@ public sealed class MainActivity : Activity
         selection = CancellationTokenSource.CreateLinkedTokenSource(lifetime?.Token ?? CancellationToken.None);
         bluetooth.Disconnect();
         selectedDevice = device;
+        reconnect = false;
     }
 
     private void ApplyState(RemoteControlState state) => RunOnUiThread(() =>
     {
+        var newlyConnected = !connected;
         SetConnected(true);
-        if (useBluetooth && selectedDevice is { } device)
+        reconnect = true;
+        if (newlyConnected && useBluetooth && selectedDevice is { } device)
             GetPreferences(Android.Content.FileCreationMode.Private)!.Edit()!.PutString("bluetooth.device", device.Key)!.Apply();
         activate.Visibility = state.IsActive ? ViewStates.Gone : ViewStates.Visible;
         volume.Enabled = state.IsActive;
-        status.Text = !state.IsActive ? $"{state.DeviceName}\nToque em Ativar dispositivo para o controlar."
+        SetStatus(!state.IsActive ? $"{state.DeviceName}\nToque em Ativar dispositivo para o controlar."
             : state.Channels.Count == 0 ? $"{state.DeviceName}\nSem canais. Abra TV ou Favoritos no PSiptv."
-            : $"{state.DeviceName}\n{state.ActiveTab} · {state.Category}";
+            : $"{state.DeviceName}\n{state.ActiveTab} · {state.Category}");
         updatingVolume = true;
         volume.Progress = Math.Clamp(state.Volume, 0, 100);
         updatingVolume = false;
@@ -336,7 +345,10 @@ public sealed class MainActivity : Activity
         displayedCurrentChannelId = "";
     }
 
-    private void SetStatus(string message) => RunOnUiThread(() => status.Text = message);
+    private void SetStatus(string message) => RunOnUiThread(() =>
+    {
+        if (status.Text != message) status.Text = message;
+    });
 
     private TextView Label(string text, float size, Color color) => new TextView(this)
     {
