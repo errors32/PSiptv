@@ -35,7 +35,7 @@
 		<ApplicationId>com.PS.PSiptv</ApplicationId>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>1.7.14</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>1.7.15</ApplicationDisplayVersion>
 
 		<!-- Android uses this integer to decide whether an APK is an update. It must
 		     increase for every package distributed to an existing installation. -->
@@ -137,6 +137,8 @@
         <PackageReference Include="LibVLCSharp.MAUI" Version="3.10.1" />
     </ItemGroup>
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+        <PackageReference Include="Xamarin.GooglePlayServices.Wearable" Version="119.0.0.4" />
+        <Compile Include="..\Shared\Android\WearChannelConnection.cs" Link="Platforms\Android\WearChannelConnection.cs" />
         <AndroidJavaSource Include="Platforms/Android/Java/*.java" />
         <AndroidJavaSource Include="Platforms/Android/JavaTests/*.java" Condition="'$(Configuration)' == 'Debug' and '$(WearInstallerSmoke)' == 'true'" />
         <AndroidMavenLibrary Include="com.github.MuntashirAkon:libadb-android" Version="3.1.1" Repository="https://jitpack.io" Bind="false" />

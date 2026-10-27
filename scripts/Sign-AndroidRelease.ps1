@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$PreviousVersion = '1.7.13',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$PreviousVersion = '1.7.14',
     [string]$KeyStore = (Join-Path $env:LOCALAPPDATA 'Xamarin/Mono for Android/Keystore/PSiptv/PSiptv.keystore'),
     [string]$BuildTools = 'C:/Program Files (x86)/Android/android-sdk/build-tools/36.0.0',
     [string]$JavaSdk = 'C:/Program Files/Android/openjdk/jdk-21.0.8'

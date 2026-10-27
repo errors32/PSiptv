@@ -7,7 +7,7 @@ using Android.Views;
 
 namespace PSiptv
 {
-    [Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, ResizeableActivity = true, SupportsPictureInPicture = true, LaunchMode = LaunchMode.SingleTask, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
+    [Activity(Theme = "@style/PSiptv.SplashTheme", MainLauncher = true, ResizeableActivity = true, SupportsPictureInPicture = true, LaunchMode = LaunchMode.SingleTask, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
     [IntentFilter([Intent.ActionMain], Categories = ["android.intent.category.LEANBACK_LAUNCHER"])]
     [IntentFilter([Intent.ActionView], Categories = [Intent.CategoryDefault, Intent.CategoryBrowsable], DataScheme = "psiptv", DataHost = "watch")]
     public class MainActivity : MauiAppCompatActivity
@@ -37,6 +37,7 @@ namespace PSiptv
         {
             AndroidBluetoothSync.Pause();
             AndroidBluetoothRemote.Pause();
+            WearPhoneRemote.Pause();
             if (PSiptv.Services.DeviceProfile.IsAutomotive) PSiptv.Services.AppServices.SuspendPlayback();
             base.OnPause();
         }
@@ -45,6 +46,7 @@ namespace PSiptv
             base.OnResume();
             AndroidBluetoothSync.Resume();
             AndroidBluetoothRemote.Resume();
+            WearPhoneRemote.Resume();
             PSiptv.Services.AndroidAppUpdateService.TryResumePendingInstall(this);
         }
         protected override void OnNewIntent(Intent? intent)

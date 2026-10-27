@@ -19,8 +19,9 @@ if ($package -notmatch "launchable-activity:[^\r\n]*icon='[^']+'") {
     throw 'Wear launcher activity must have an explicit icon.'
 }
 if ($package -notmatch "uses-feature: name='android.hardware.type.watch'") { throw 'APK does not target Wear OS.' }
-if ($package -notmatch "uses-permission: name='android.permission.BLUETOOTH_CONNECT'") {
-    throw 'APK is missing the permission to connect to paired Bluetooth devices.'
+$manifest = & $aapt.FullName dump xmltree $Apk AndroidManifest.xml 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0 -or $manifest -notmatch 'com.google.android.gms.version') {
+    throw 'APK is missing the Google Play services metadata needed for Wear OS Data Layer.'
 }
 if ($package -notmatch "native-code:[^\r\n]*'armeabi-v7a'" -or $package -notmatch "native-code:[^\r\n]*'arm64-v8a'") {
     throw 'APK must include both 32-bit and 64-bit ARM runtimes for watches.'
@@ -45,4 +46,4 @@ try {
         if (!$store -and !$assembly) { throw "APK lacks embedded .NET assemblies for $abi and cannot be sideloaded independently." }
     }
 } finally { $zip.Dispose() }
-Write-Output 'PASS: Wear launcher, legacy/adaptive/monochrome icons, watch feature, Bluetooth permission, ARM runtimes and embedded .NET code are present.'
+Write-Output 'PASS: Wear launcher, legacy/adaptive/monochrome icons, watch feature, Data Layer metadata, ARM runtimes and embedded .NET code are present.'

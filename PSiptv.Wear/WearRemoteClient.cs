@@ -8,9 +8,9 @@ using PSiptv.Core;
 namespace PSiptv.Wear;
 
 public sealed record RemoteDevice(string Name, IPAddress Address, int Port, string Token, bool IsActive = true,
-    string BluetoothAddress = "")
+    string BluetoothAddress = "", string WearNodeId = "")
 {
-    public string Key => BluetoothAddress.Length > 0 ? BluetoothAddress : Address.ToString();
+    public string Key => WearNodeId.Length > 0 ? "wear:" + WearNodeId : BluetoothAddress.Length > 0 ? BluetoothAddress : Address.ToString();
 }
 
 public sealed class WearRemoteClient

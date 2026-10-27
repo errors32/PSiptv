@@ -12,7 +12,7 @@
     <!-- Phone and watch builds need distinct, increasing version codes when
          they share a Play listing. Suffix 2 identifies the Wear artifact. -->
     <ApplicationVersion>$([MSBuild]::Add($([MSBuild]::Multiply($([MSBuild]::Divide($([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()), 60)), 10)), 2))</ApplicationVersion>
-    <ApplicationDisplayVersion>1.7.14</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>1.7.15</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
     <RuntimeIdentifiers>android-arm;android-arm64;android-x86;android-x64</RuntimeIdentifiers>
     <!-- A sideloaded APK must also work without Visual Studio's fast-deploy files. -->
@@ -22,6 +22,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\PSiptv.Core\PSiptv.Core.csproj" />
+    <Compile Include="..\Shared\Android\WearChannelConnection.cs" Link="WearChannelConnection.cs" />
+    <PackageReference Include="Xamarin.GooglePlayServices.Wearable" Version="119.0.0.4" />
   </ItemGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <AndroidPackageFormats>apk</AndroidPackageFormats>

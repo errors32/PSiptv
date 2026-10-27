@@ -12,7 +12,7 @@ namespace PSiptv.Wear;
 public sealed class MainActivity : Activity
 {
     private readonly WearRemoteClient client = new();
-    private readonly WearBluetoothClient bluetooth = new();
+    private readonly WearPhoneClient bluetooth = new();
     private readonly List<RemoteDevice> devices = [];
     private readonly List<RemoteChannel> channels = [];
     private readonly SemaphoreSlim discoveryLock = new(1, 1);
@@ -34,8 +34,6 @@ public sealed class MainActivity : Activity
     private bool useBluetooth;
     private bool foreground;
     private bool connected;
-    private bool permissionAsked;
-    private const int BluetoothPermissionRequest = 42;
     private string displayedCurrentChannelId = "";
 
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -85,28 +83,12 @@ public sealed class MainActivity : Activity
         devicePicker.Visibility = ViewStates.Gone;
         SetConnected(false);
         lifetime = new CancellationTokenSource();
-        if (useBluetooth && !WearBluetoothClient.HasPermission)
-        {
-            SetStatus("Autorize os dispositivos próximos para usar Bluetooth. Pode também escolher Wi-Fi.");
-            if (!permissionAsked && OperatingSystem.IsAndroidVersionAtLeast(31))
-            {
-                permissionAsked = true;
-                RequestPermissions([Android.Manifest.Permission.BluetoothConnect], BluetoothPermissionRequest);
-            }
-            return;
-        }
         if (!useBluetooth)
         {
             wifi = new WearWifiConnection(this, SetStatus);
             wifi.Start();
         }
         _ = DiscoverAndPollAsync(lifetime.Token);
-    }
-
-    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Android.Content.PM.Permission[] grantResults)
-    {
-        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == BluetoothPermissionRequest && useBluetooth && foreground) StartSession();
     }
 
     private View BuildInterface()
@@ -134,7 +116,7 @@ public sealed class MainActivity : Activity
         root.AddView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(36)));
 
         var transport = new Spinner(this) { ContentDescription = "Ligação do comando" };
-        transport.Adapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerDropDownItem, new[] { "Bluetooth", "Wi-Fi" });
+        transport.Adapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerDropDownItem, new[] { "Bluetooth · telemóvel", "Wi-Fi" });
         transport.SetSelection(useBluetooth ? 0 : 1);
         transport.ItemSelected += (_, e) =>
         {
@@ -155,19 +137,6 @@ public sealed class MainActivity : Activity
         wifiSettings.SetAllCaps(false);
         wifiSettings.Click += (_, _) =>
         {
-            if (useBluetooth && !WearBluetoothClient.HasPermission)
-            {
-                if (permissionAsked && OperatingSystem.IsAndroidVersionAtLeast(31) &&
-                    !ShouldShowRequestPermissionRationale(Android.Manifest.Permission.BluetoothConnect))
-                {
-                    StartActivity(new Android.Content.Intent(Android.Provider.Settings.ActionApplicationDetailsSettings,
-                        Android.Net.Uri.Parse($"package:{PackageName}")));
-                    return;
-                }
-                permissionAsked = false;
-                StartSession();
-                return;
-            }
             try { StartActivity(new Android.Content.Intent(useBluetooth ? Android.Provider.Settings.ActionBluetoothSettings : Android.Provider.Settings.ActionWifiSettings)); }
             catch (Android.Content.ActivityNotFoundException) { SetStatus("Abra as definições de ligação do relógio."); }
         };
@@ -230,7 +199,7 @@ public sealed class MainActivity : Activity
             {
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
                 if (selectedDevice is not null && connected) await RefreshStateAsync(cancellationToken);
-                else if (!useBluetooth) await DiscoverAsync(cancellationToken);
+                else if (!useBluetooth || selectedDevice is null) await DiscoverAsync(cancellationToken);
             }
             catch (System.OperationCanceledException) { break; }
         }
@@ -241,8 +210,8 @@ public sealed class MainActivity : Activity
         if (cancellationToken.IsCancellationRequested || !await discoveryLock.WaitAsync(0)) return;
         try
         {
-            SetStatus(useBluetooth ? "Dispositivos Bluetooth emparelhados…" : "A procurar no Wi-Fi…");
-            var found = useBluetooth ? WearBluetoothClient.PairedDevices() : await client.DiscoverAsync(cancellationToken);
+            SetStatus(useBluetooth ? "A procurar o telemóvel emparelhado…" : "A procurar no Wi-Fi…");
+            var found = useBluetooth ? await WearPhoneClient.PairedDevicesAsync(cancellationToken) : await client.DiscoverAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             RunOnUiThread(() =>
             {
@@ -262,8 +231,8 @@ public sealed class MainActivity : Activity
                 updatingDevices = false;
                 SetConnected(false);
                 status.Text = useBluetooth
-                    ? devices.Count == 0 ? "Emparelhe o relógio com o telemóvel/TV nas definições Bluetooth."
-                        : "Escolha o telemóvel/TV e toque em Ligar. Mantenha o PSiptv aberto e o controlo Bluetooth ativo nesse equipamento."
+                    ? devices.Count == 0 ? "Confirme a ligação ao telemóvel na aplicação Galaxy Wearable e atualize o PSiptv nos dois equipamentos."
+                        : "Toque em Ligar. Mantenha uma lista aberta no PSiptv do telemóvel e o controlo Bluetooth ativo."
                     : devices.Count == 0 ? "Nenhum PSiptv encontrado. Ligue o relógio ao mesmo Wi-Fi e abra uma lista no PSiptv do telemóvel/TV."
                         : $"{devices.Count} dispositivo(s)";
             });
@@ -313,7 +282,7 @@ public sealed class MainActivity : Activity
     }
 
     private Task<RemoteControlState> SendAsync(RemoteDevice device, string command, string value, CancellationToken token) =>
-        device.BluetoothAddress.Length > 0 ? bluetooth.SendAsync(device.BluetoothAddress, command, value, token)
+        device.WearNodeId.Length > 0 ? bluetooth.SendAsync(device.WearNodeId, command, value, token)
             : client.SendAsync(device, command, value, token);
 
     private void SelectDevice(RemoteDevice? device)
@@ -355,7 +324,7 @@ public sealed class MainActivity : Activity
         this.connected = connected;
         connect.Enabled = true;
         volume.Enabled = connected;
-        wifiSettings.Text = useBluetooth ? WearBluetoothClient.HasPermission ? "Definições Bluetooth" : "Autorizar Bluetooth" : "Ligar Wi-Fi";
+        wifiSettings.Text = useBluetooth ? "Definições Bluetooth" : "Ligar Wi-Fi";
         wifiSettings.ContentDescription = wifiSettings.Text;
         wifiSettings.Visibility = !connected ? ViewStates.Visible : ViewStates.Gone;
         connect.Visibility = useBluetooth && !connected && selectedDevice is not null ? ViewStates.Visible : ViewStates.Gone;
