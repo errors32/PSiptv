@@ -7,7 +7,7 @@ using PSiptv.Core;
 
 namespace PSiptv.Wear;
 
-[Activity(MainLauncher = true, Exported = true, Label = "PSiptv Remote",
+[Activity(MainLauncher = true, Exported = true, Label = "PSiptv Remote", Icon = "@mipmap/app_icon",
     Theme = "@android:style/Theme.Material.NoActionBar")]
 public sealed class MainActivity : Activity
 {

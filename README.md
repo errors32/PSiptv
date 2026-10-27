@@ -1,9 +1,11 @@
 # PSiptv
 
-A release **1.7.12** inclui `PSiptv.v1.7.12.apk` para telemóvel/Android TV,
-`PSiptv.Remote.Wear.v1.7.12.apk` para o relógio e o pacote Windows x64.
+A release **1.7.13** inclui `PSiptv.v1.7.13.apk` para telemóvel/Android TV,
+`PSiptv.Remote.Wear.v1.7.13.apk` para o relógio e o pacote Windows x64.
 O comando do relógio oferece Bluetooth e Wi-Fi; os APKs oficiais usam a assinatura
-de produção existente. Consulte as [notas da versão](artifacts/RELEASE_NOTES_1.7.12.md).
+de produção existente. Consulte as [notas da versão](artifacts/RELEASE_NOTES_1.7.13.md).
+O relógio usa agora o símbolo PSiptv com ícone adaptativo e monocromático,
+associado explicitamente à entrada **PSiptv Remote** no launcher.
 
 Em **Sobre → Instalar / atualizar relógio**, o telemóvel pode descarregar o APK
 Wear mais recente e instalá-lo diretamente no relógio, com progresso e confirmação

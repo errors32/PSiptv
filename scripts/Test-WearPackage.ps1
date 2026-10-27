@@ -15,6 +15,9 @@ if ($package -notmatch "package: name='com.PS.PSiptv'") { throw 'Unexpected Wear
 if ($package -notmatch "launchable-activity: name='[^']+'[^\r\n]*label='PSiptv Remote'") {
     throw 'PSiptv Remote is missing from the Android launcher.'
 }
+if ($package -notmatch "launchable-activity:[^\r\n]*icon='[^']+'") {
+    throw 'Wear launcher activity must have an explicit icon.'
+}
 if ($package -notmatch "uses-feature: name='android.hardware.type.watch'") { throw 'APK does not target Wear OS.' }
 if ($package -notmatch "uses-permission: name='android.permission.BLUETOOTH_CONNECT'") {
     throw 'APK is missing the permission to connect to paired Bluetooth devices.'
@@ -25,6 +28,11 @@ if ($package -notmatch "native-code:[^\r\n]*'armeabi-v7a'" -or $package -notmatc
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Apk).Path)
 try {
+    foreach ($resource in @('drawable/app_icon.xml', 'drawable/app_icon_foreground.xml',
+        'drawable/app_icon_monochrome.xml',
+        'mipmap-anydpi-v26/app_icon.xml', 'mipmap-anydpi-v33/app_icon.xml')) {
+        if (!$zip.GetEntry("res/$resource")) { throw "APK is missing launcher icon resource: $resource" }
+    }
     # Fast Deployment APKs contain the native runtime but omit managed code.
     foreach ($abi in @('armeabi-v7a', 'arm64-v8a')) {
         $store = $zip.Entries | Where-Object {
@@ -37,4 +45,4 @@ try {
         if (!$store -and !$assembly) { throw "APK lacks embedded .NET assemblies for $abi and cannot be sideloaded independently." }
     }
 } finally { $zip.Dispose() }
-Write-Output 'PASS: Wear launcher, watch feature, Bluetooth permission, ARM runtimes and embedded .NET code are present.'
+Write-Output 'PASS: Wear launcher, legacy/adaptive/monochrome icons, watch feature, Bluetooth permission, ARM runtimes and embedded .NET code are present.'
