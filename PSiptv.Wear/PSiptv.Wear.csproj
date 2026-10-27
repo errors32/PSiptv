@@ -12,7 +12,7 @@
     <!-- Phone and watch builds need distinct, increasing version codes when
          they share a Play listing. Suffix 2 identifies the Wear artifact. -->
     <ApplicationVersion>$([MSBuild]::Add($([MSBuild]::Multiply($([MSBuild]::Divide($([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()), 60)), 10)), 2))</ApplicationVersion>
-    <ApplicationDisplayVersion>1.7.16</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>1.7.17</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
     <RuntimeIdentifiers>android-arm;android-arm64;android-x86;android-x64</RuntimeIdentifiers>
     <!-- A sideloaded APK must also work without Visual Studio's fast-deploy files. -->

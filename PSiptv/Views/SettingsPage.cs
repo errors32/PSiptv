@@ -186,6 +186,7 @@ public sealed partial class SettingsPage : LocalizedPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        listsVisible = true;
         try { await ReloadAsync(); } catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
     }
 
@@ -195,12 +196,22 @@ public sealed partial class SettingsPage : LocalizedPage
         foreach (var refresh in refreshRows) refresh();
         if (section == SettingsSection.Vpn) await ReloadVpnProfilesAsync();
         if (section != SettingsSection.Lists) return;
+        if (!listsVisible) return;
+        CancelExpirationRefresh();
+        expirationRefresh = new();
+        var expirationToken = expirationRefresh.Token;
         accounts.Clear();
         var saved = await AppServices.Accounts.LoadAsync();
+        if (expirationToken.IsCancellationRequested) return;
+        var pendingExpirations = new List<(PlaylistAccount Account, Label Label)>();
         if (saved.Count == 0) accounts.Add(Ui.Text("Ainda não adicionou nenhuma lista.", 14, true));
         foreach (var account in saved)
         {
+            var expiration = Ui.Text("A consultar expiração…", 12, true);
+            expiration.AutomationId = "PlaylistExpiration_" + account.Id;
+            pendingExpirations.Add((account, expiration));
             accounts.Add(Ui.Card(Ui.Stack(Ui.Text(account.Name, 18), Ui.Text(account.Description, 12, true),
+                expiration,
                 Ui.Button("Editar ligação / PIN", async () =>
                 {
                     if (await PinPage.AuthorizeAsync(this, account)) await Navigation.PushAsync(new AccountPage(account));
@@ -216,6 +227,8 @@ public sealed partial class SettingsPage : LocalizedPage
                     await ReloadAsync();
                 }))));
         }
+        using var expirationSlots = new SemaphoreSlim(2, 2);
+        await Task.WhenAll(pendingExpirations.Select(item => RefreshExpirationAsync(item.Account, item.Label, expirationSlots, expirationToken)));
     }
 }
 

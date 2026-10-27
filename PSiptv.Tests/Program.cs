@@ -799,6 +799,7 @@ PodcastListingTests.Run(Check);
 ExperienceTests.Run(Check);
 await BluetoothRemoteTests.RunAsync(Check);
 await WearDataLayerTests.RunAsync(Check);
+await PlaylistExpirationTests.RunAsync(Check);
 RemoteChannelListTests.Run(Check);
 await WearRemoteTests.RunAsync(Check);
 await WearBluetoothTests.RunAsync(Check);

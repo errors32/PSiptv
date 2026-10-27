@@ -48,6 +48,14 @@ public sealed class IptvClient(HttpClient http)
         return Encoding.UTF8.GetString(output.ToArray());
     }
 
+    public async Task<PlaylistExpiration> GetPlaylistExpirationAsync(PlaylistAccount account, CancellationToken ct)
+    {
+        var metadataAccount = PlaylistExpiration.MetadataAccount(account);
+        if (metadataAccount is null) return PlaylistExpiration.Unknown;
+        using var document = await ApiAsync(metadataAccount, "", ct, limit: 1_000_000).ConfigureAwait(false);
+        return PlaylistExpiration.ParseXtream(document.RootElement);
+    }
+
     public async Task ValidateAsync(PlaylistAccount account, CancellationToken ct)
     {
         if (account.Provider is ProviderType.M3U or ProviderType.LocalM3U)
@@ -367,12 +375,12 @@ public sealed class IptvClient(HttpClient http)
             ? AdditionalSourceClient.DownloadTvheadendGuideAsync(http, account, url, UserAgent, ct)
             : DownloadAsync(url, ct, 120_000_000);
 
-    private async Task<JsonDocument> ApiAsync(PlaylistAccount account, string action, CancellationToken ct, string key = "", string value = "")
+    private async Task<JsonDocument> ApiAsync(PlaylistAccount account, string action, CancellationToken ct, string key = "", string value = "", int limit = 120_000_000)
     {
         var url = $"{account.Url.TrimEnd('/')}/player_api.php?username={Uri.EscapeDataString(account.Username)}&password={Uri.EscapeDataString(account.Password)}";
         if (action.Length > 0) url += $"&action={action}";
         if (key.Length > 0) url += $"&{key}={Uri.EscapeDataString(value)}";
-        return JsonDocument.Parse(await DownloadAsync(url, ct, 120_000_000).ConfigureAwait(false));
+        return JsonDocument.Parse(await DownloadAsync(url, ct, limit).ConfigureAwait(false));
     }
 
     private static string StreamUrl(PlaylistAccount a, string type, string id, string ext) =>

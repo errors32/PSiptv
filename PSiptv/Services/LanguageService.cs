@@ -70,6 +70,15 @@ public static class LanguageService
     }
     private static readonly Dictionary<string, string> translations = new()
     {
+        ["A consultar expiração…"] = "Checking expiration…",
+        ["Sem expiração"] = "No expiration",
+        ["Expiração não informada pela fonte."] = "The source does not provide an expiration date.",
+        ["Expiração indisponível. Volte a abrir esta página para tentar novamente."] = "Expiration unavailable. Reopen this page to try again.",
+        ["Expirada em {0}"] = "Expired on {0}",
+        ["Expira em {0} · faltam {1} d {2} h"] = "Expires on {0} · {1} d {2} h remaining",
+        ["Expira em {0} · faltam {1} h {2} min"] = "Expires on {0} · {1} h {2} min remaining",
+        ["Expira em {0} · faltam {1} min"] = "Expires on {0} · {1} min remaining",
+        ["Expira em {0} · falta menos de 1 min"] = "Expires on {0} · less than 1 min remaining",
         ["Proteger com palavra-passe"] = "Protect with a password",
         ["A proteção encripta toda a cópia, incluindo as credenciais das listas. Sem proteção, o ficheiro contém dados legíveis."] = "Protection encrypts the entire backup, including playlist credentials. Without protection, the file contains readable data.",
         ["Proteger cópia de segurança"] = "Protect backup",
