@@ -36,3 +36,6 @@ foreach ($scenario in @('success','rollback','invalid')) {
     "PASS: updater $scenario"
 }
 # Keep fixtures for inspection; no production installation or data is touched.
+# The final child intentionally fails in the invalid-package scenario. All three
+# assertions passed, so report success to callers and CI instead of that child code.
+exit 0

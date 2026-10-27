@@ -34,6 +34,13 @@ jobs:
         run: dotnet workload install ${{ matrix.workload }}
       - name: Build application
         run: dotnet build PSiptv/PSiptv.csproj -c Debug -f ${{ matrix.framework }} -p:AppTargetFrameworks=${{ matrix.framework }}
+      - name: Build standalone Wear OS APK
+        if: matrix.workload == 'maui-android'
+        run: dotnet build PSiptv.Wear/PSiptv.Wear.csproj -c Debug
+      - name: Validate Wear OS package
+        if: matrix.workload == 'maui-android'
+        shell: pwsh
+        run: ./scripts/Test-WearPackage.ps1 -Apk PSiptv.Wear/bin/Debug/net10.0-android/com.PS.PSiptv-Signed.apk
       - name: Verify Windows update replacement and rollback
         if: matrix.workload == 'maui-windows'
         shell: pwsh

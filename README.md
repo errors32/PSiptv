@@ -1,5 +1,10 @@
 # PSiptv
 
+A release **1.7.11** inclui `PSiptv.v1.7.11.apk` para telemóvel/Android TV,
+`PSiptv.Remote.Wear.v1.7.11.apk` para o relógio e o pacote Windows x64.
+O comando do relógio oferece Bluetooth e Wi-Fi; os APKs oficiais usam a assinatura
+de produção existente. Consulte as [notas da versão](artifacts/RELEASE_NOTES_1.7.11.md).
+
 Leitor IPTV em português, desenvolvido em .NET 10 / MAUI. Não inclui listas nem conteúdos pré-carregados.
 
 ## Comando remoto por Bluetooth (Android)
@@ -92,7 +97,7 @@ Algumas listas IPTV, transmissões ou URLs podem ser ilegais ou não autorizadas
 - **Downloads offline de VOD**: descarrega filmes e episódios para o armazenamento privado da aplicação, com fila de até dois downloads simultâneos, progresso, pausa, retoma por pedidos HTTP parciais, reprodução local e gestão por perfil. Downloads interrompidos ficam disponíveis para retoma e são removidos com a lista ou o perfil associado.
 - **Experiência dedicada a Android TV**: a aplicação deteta televisões e dispositivos Leanback e aplica um layout mais compacto sem afetar telemóveis ou tablets. Títulos, barras de categorias, navegação inferior, cartões de canais e submenus ocupam menos altura; os ícones passam a ficar ao lado dos nomes onde isso poupa espaço, mantendo alvos de foco visíveis e adequados ao comando remoto. Durante a TV em direto em ecrã inteiro, as teclas cima/baixo do D-pad mudam diretamente para o canal anterior/seguinte da categoria quando os controlos e o menu de canais estão ocultos.
 - **Android Auto**: apresenta e reproduz em modo áudio apenas os canais marcados como favoritos no perfil ativo, usando a interface segura e os controlos multimédia do automóvel. Uma lista protegida por PIN tem de ser previamente desbloqueada na aplicação.
-- **Comando Wear OS**: a aplicação complementar **PSiptv Remote** descobre automaticamente instâncias do PSiptv na mesma rede Wi-Fi, permite escolher o dispositivo quando existe mais do que um, ajustar o volume e mudar de canal. O telemóvel/televisor deve ter o PSiptv aberto e ambos os dispositivos devem estar na mesma rede local.
+- **Comando Wear OS**: a aplicação complementar **PSiptv Remote** permite escolher Bluetooth ou Wi-Fi, selecionar o recetor, ativá-lo, ajustar o volume e mudar de canal. Bluetooth usa dispositivos emparelhados, com o PSiptv aberto e o controlo Bluetooth ativo no recetor; Wi-Fi descobre instâncias na mesma rede local. A versão 1.3.6 do comando começa em Bluetooth e memoriza a opção escolhida.
 - **Timeshift**: no leitor Android, os canais em direto podem ser pausados e retomados, recuados ou avançados em intervalos de 30 segundos e devolvidos imediatamente ao direto. O buffer é temporário, tem uma janela configurável entre 5 e 120 minutos e é limpo automaticamente; a capacidade efetiva de pausa e recuo depende do formato disponibilizado pelo fornecedor.
 - **VOD**: filmes e séries separados; Xtream carrega episódios ordenados por temporada. Nas M3U, a classificação usa o grupo ou o caminho/extensão do conteúdo; episódios são entradas individuais.
 - **Detalhes de filmes e séries**: conteúdos Xtream apresentam imagem de destaque, sinopse, data, género, duração, classificação, elenco, realização e trailer quando fornecidos. Filmes podem ser reproduzidos a partir da página; séries reutilizam os episódios recebidos com os detalhes, evitando um segundo pedido.
@@ -120,6 +125,51 @@ dotnet build PSiptv/PSiptv.csproj -f net10.0-windows10.0.19041.0
 dotnet build PSiptv/PSiptv.csproj -f net10.0-android
 dotnet build PSiptv.Wear/PSiptv.Wear.csproj
 ```
+
+### Instalar o comando no Galaxy Watch 5 (Wear OS)
+
+O relógio usa a aplicação **PSiptv Remote**, gerada pelo projeto `PSiptv.Wear`.
+Instalar a aplicação de telemóvel no telefone não instala automaticamente o comando
+no relógio. Não envie para o relógio o APK de `PSiptv/bin`: os dois projetos têm o
+mesmo identificador de pacote, mas interfaces e funcionalidades diferentes.
+
+Para um teste por instalação manual, compile o projeto Wear em Debug. O APK inclui
+o código .NET e não depende do Fast Deployment do Visual Studio:
+
+```powershell
+dotnet build PSiptv.Wear/PSiptv.Wear.csproj -c Debug
+./scripts/Test-WearPackage.ps1 -Apk PSiptv.Wear/bin/Debug/net10.0-android/com.PS.PSiptv-Signed.apk
+adb -s <endereco-e-porta-do-relogio> install -r PSiptv.Wear/bin/Debug/net10.0-android/com.PS.PSiptv-Signed.apk
+```
+
+Ative a depuração sem fios nas opções de programador do relógio e use `adb pair`
+e `adb connect` com os endereços/portas apresentados no próprio relógio. Abra
+**PSiptv Remote** na lista de aplicações. Desde a versão **1.3.6**, o seletor de
+ligação começa em **Bluetooth** e memoriza a escolha entre Bluetooth e Wi-Fi.
+
+Para Bluetooth, autorize **Dispositivos próximos** no relógio, emparelhe o relógio
+com o telemóvel/TV nas definições Bluetooth e escolha esse equipamento no comando.
+Toque em **Ligar ao dispositivo**. No recetor, mantenha uma lista desbloqueada e
+o PSiptv aberto, com **Permitir controlo por Bluetooth** ativo no ecrã de comando
+remoto. Não é necessário o mesmo Wi-Fi nem introduzir as credenciais IPTV no
+relógio: o comando usa o perfil aberto no recetor. Volume, canais, consulta de
+estado e ativação do dispositivo seguem pela ligação Bluetooth segura. Apenas
+dispositivos emparelhados são apresentados; acessórios sem PSiptv não respondem.
+O último recetor que respondeu é recordado para a próxima abertura. Uma falha
+permite voltar a tentar no botão **Ligar**, sem repetir comandos de reprodução.
+
+Para Wi-Fi, escolha **Wi-Fi** no seletor e ligue o relógio à mesma rede do recetor.
+O comando pede uma ligação Wi-Fi direta apenas nesse modo e enquanto está visível;
+liberta-a ao mudar para Bluetooth ou ao sair. Sem recetores, mostra instruções e
+um botão para abrir o Wi-Fi. Em ambos os modos, se o equipamento escolhido não
+estiver ativo, toque em **Ativar dispositivo**.
+
+Consulte os [detalhes e limites da validação Bluetooth do relógio](docs/wear-bluetooth.md).
+
+O APK Debug tem assinatura de desenvolvimento. Para atualizar uma instalação
+de produção é necessário compilar `PSiptv.Wear` em Release com a mesma chave de
+assinatura anterior, usando as variáveis abaixo. Não é necessário apagar dados
+para atualizar um APK com o mesmo identificador e assinatura compatível.
 
 Para distribuir uma atualização Android, use sempre a mesma chave de assinatura da
 versão já instalada e aumente `ApplicationVersion`. Na linha de comandos, a

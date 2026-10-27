@@ -1,4 +1,4 @@
-param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.7.10', [ValidateSet('x64','arm64')][string]$Architecture = 'x64')
+param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.7.11', [ValidateSet('x64','arm64')][string]$Architecture = 'x64', [switch]$IncludeWear)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $package = Join-Path $root "artifacts/PSiptv.v$Version.windows-$Architecture.zip"
@@ -9,6 +9,19 @@ if (!(Test-Path -LiteralPath $apk) -or !(Test-Path -LiteralPath $resultPath)) { 
 $result = Get-Content -Raw -LiteralPath $resultPath | ConvertFrom-Json
 if ($result.Version -ne $Version -or !$result.SignatureMatchesPrevious -or
     $result.SHA256 -ne (Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash) { throw 'Android signing verification does not match this APK.' }
+$paths = @($package, ($package + '.sha256'), $apk)
+if ($IncludeWear) {
+    $wear = Join-Path $root "artifacts/PSiptv.Remote.Wear.v$Version.apk"
+    $wearResult = Get-Content -Raw -LiteralPath (Join-Path $root "artifacts/$Version-wear-signing-result.json") | ConvertFrom-Json
+    if ($wearResult.Version -ne $Version -or !$wearResult.SignatureMatchesPrevious -or
+        $wearResult.SHA256 -ne (Get-FileHash -LiteralPath $wear -Algorithm SHA256).Hash -or
+        $wearResult.CertificateSHA256 -ne $result.CertificateSHA256) { throw 'Wear signing verification does not match the phone identity.' }
+    $paths += $wear
+}
+$commit = (git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve release commit.' }
+$remoteRef = git ls-remote origin refs/heads/PRD
+if ($LASTEXITCODE -ne 0 -or ($remoteRef -split '\s+')[0] -ne $commit) { throw 'Push the release commit to PRD first.' }
 $lines = "protocol=https`nhost=github.com`n`n" | git -c credential.interactive=false credential fill 2>$null
 if ($LASTEXITCODE -ne 0) { throw 'GitHub credentials unavailable.' }
 $credentials = @{}
@@ -19,13 +32,13 @@ $api = 'https://api.github.com/repos/errors32/PSiptv'
 $releases = Invoke-RestMethod -Uri "$api/releases?per_page=100" -Headers $headers
 $release = $releases | Where-Object tag_name -eq $Version | Select-Object -First 1
 if (!$release) {
-    $commit = (git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve release commit.' }
-    $body = @{ tag_name = $Version; target_commitish = $commit; name = "PSiptv $Version — Windows e Android";
+    $body = @{ tag_name = $Version; target_commitish = $commit; name = "PSiptv $Version — Android, Wear OS e Windows";
         body = [IO.File]::ReadAllText((Join-Path $root "artifacts/RELEASE_NOTES_$Version.md")); draft = $true; prerelease = $false } | ConvertTo-Json
     $release = Invoke-RestMethod -Method Post -Uri "$api/releases" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
 }
-foreach ($path in @($package, ($package + '.sha256'), $apk)) {
+if (!$release.draft) { throw 'This release is already public. Inspect it instead of changing published assets.' }
+if ($release.target_commitish -ne $commit) { throw 'Draft release targets a different commit.' }
+foreach ($path in $paths) {
     $name = [IO.Path]::GetFileName($path)
     $digest = 'sha256:' + (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     $asset = $release.assets | Where-Object name -eq $name | Select-Object -First 1

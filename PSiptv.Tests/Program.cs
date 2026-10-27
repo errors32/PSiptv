@@ -799,6 +799,8 @@ PodcastListingTests.Run(Check);
 ExperienceTests.Run(Check);
 await BluetoothRemoteTests.RunAsync(Check);
 RemoteChannelListTests.Run(Check);
+await WearRemoteTests.RunAsync(Check);
+await WearBluetoothTests.RunAsync(Check);
 Console.WriteLine($"\n{passed} verificações concluídas.");
 await RegressionTests.RunAsync();
 }
