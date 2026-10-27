@@ -173,7 +173,9 @@ public sealed class MainActivity : Activity
         };
         root.AddView(wifiSettings, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
-        deviceAdapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerDropDownItem, []);
+        // The array overload wraps a fixed-size Arrays.asList on Android.
+        // Discovery replaces these entries, so use the mutable empty constructor.
+        deviceAdapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerDropDownItem);
         devicePicker = new Spinner(this) { Adapter = deviceAdapter, Visibility = ViewStates.Gone };
         devicePicker.ItemSelected += async (_, e) =>
         {
@@ -207,7 +209,7 @@ public sealed class MainActivity : Activity
         volumeRow.AddView(volume, new LinearLayout.LayoutParams(0, Dp(38), 1));
         root.AddView(volumeRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(38)));
 
-        channelAdapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleListItem1, []);
+        channelAdapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleListItem1);
         channelList.AddHeaderView(root, null, false);
         channelList.Adapter = channelAdapter;
         channelList.ItemClick += async (_, e) =>
