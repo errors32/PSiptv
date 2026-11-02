@@ -20,19 +20,21 @@ internal static class AndroidTvFocus
     private static readonly ConditionalWeakTable<NativeView, FocusBridge> Bridges = new();
     private static readonly ConditionalWeakTable<NativeView, CollectionFocusBridge> Collections = new();
     private static readonly ConditionalWeakTable<NativeView, TextInputBridge> TextInputs = new();
-    private static readonly ConditionalWeakTable<NativeView, NavigationBridge> Navigations = new();
+    private static readonly ConditionalWeakTable<NativeView, AndroidTvNavigationBridge> Navigations = new();
     private static WeakReference<TvFocusableBorder>? highlightedCard;
 
     internal static void Attach(NativeView platformView, TvFocusableBorder card)
     {
-        Bridges.GetValue(platformView, view => new FocusBridge(view)).Connect(card);
         var weak = new WeakReference<TvFocusableBorder>(card);
         AttachNavigation(platformView, (direction, repeat) =>
             weak.TryGetTarget(out var target) && target.Navigate?.Invoke(direction, repeat) == true);
+        // Navigation must run before activation: it releases unhandled keys;
+        // the card bridge then consumes OK/Enter and long-press release.
+        Bridges.GetValue(platformView, view => new FocusBridge(view)).Connect(card);
     }
 
     internal static void AttachNavigation(NativeView platformView, Func<TvNavigationDirection, int, bool> navigate) =>
-        Navigations.GetValue(platformView, view => new NavigationBridge(view)).Navigate = navigate;
+        Navigations.GetValue(platformView, view => new AndroidTvNavigationBridge(view)).Navigate = navigate;
 
     internal static void AttachCollection(NativeView platformView) =>
         Collections.GetValue(platformView, view => new CollectionFocusBridge(view));
@@ -123,51 +125,6 @@ internal static class AndroidTvFocus
         {
             longPressed = true;
             if (card?.TryGetTarget(out var target) == true) _ = target.ToggleFavoriteAsync();
-            e.Handled = true;
-        }
-    }
-
-    private sealed class NavigationBridge
-    {
-        internal Func<TvNavigationDirection, int, bool>? Navigate { get; set; }
-        private Keycode? consumedKey;
-        private long lastMovement;
-
-        internal NavigationBridge(NativeView view) => view.KeyPress += OnKeyPress;
-
-        private void OnKeyPress(object? sender, NativeView.KeyEventArgs e)
-        {
-            if (e.Event?.Action == KeyEventActions.Up && consumedKey == e.KeyCode)
-            {
-                consumedKey = null;
-                e.Handled = true;
-                return;
-            }
-            if (e.Event?.Action != KeyEventActions.Down) return;
-            TvNavigationDirection? direction = e.KeyCode switch
-            {
-                Keycode.DpadLeft => TvNavigationDirection.Left,
-                Keycode.DpadRight => TvNavigationDirection.Right,
-                Keycode.DpadUp => TvNavigationDirection.Up,
-                Keycode.DpadDown => TvNavigationDirection.Down,
-                Keycode.PageUp or Keycode.ChannelUp => TvNavigationDirection.PageUp,
-                Keycode.PageDown or Keycode.ChannelDown => TvNavigationDirection.PageDown,
-                _ => null
-            };
-            if (direction is null) return;
-            var now = Environment.TickCount64;
-            if (e.Event.RepeatCount > 0 && consumedKey == e.KeyCode && now - lastMovement < 80)
-            {
-                e.Handled = true;
-                return;
-            }
-            if (Navigate?.Invoke(direction.Value, e.Event.RepeatCount) != true)
-            {
-                consumedKey = null;
-                return;
-            }
-            lastMovement = now;
-            consumedKey = e.KeyCode;
             e.Handled = true;
         }
     }

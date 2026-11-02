@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../PSiptv.Core/PSiptv.Core.csproj" /></ItemGroup>
   <ItemGroup>
+    <Compile Include="../PSiptv/Platforms/Android/AndroidTvNavigationBridge.cs" Link="AndroidTv/AndroidTvNavigationBridge.cs" />
     <Compile Include="../PSiptv.Wear/WearRemoteClient.cs" Link="Wear/WearRemoteClient.cs" />
     <Compile Include="../PSiptv.Wear/WearJsonContext.cs" Link="Wear/WearJsonContext.cs" />
     <Compile Include="../PSiptv.Wear/WearBluetoothProtocol.cs" Link="Wear/WearBluetoothProtocol.cs" />
