@@ -18,7 +18,10 @@ public sealed class PlayerPage : LocalizedPage
     private readonly Button fullscreenFocusTarget;
     private readonly Grid channelMenu;
     private readonly CollectionView fullscreenChannels;
-    private readonly IReadOnlyList<MediaItem> queue;
+    private IReadOnlyList<MediaItem> queue;
+    private bool changingPodcastEpisode;
+    private MediaItem? previousPodcastEpisode;
+    private MediaItem? nextPodcastEpisode;
     private MediaItem current;
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? countdown;
@@ -44,6 +47,7 @@ public sealed class PlayerPage : LocalizedPage
         player = new PlaybackView(recordHistory: !transient, requireActiveAccount: !transient);
         player.OwnerPage = this;
         current = item; queue = episodes ?? []; this.resume = resume;
+        UpdatePodcastEpisodeQueue();
         player.PlaybackStopping += () => { countdown?.Cancel(); sleepTimer?.Cancel(); };
         liveChannel = !transient && item.Kind == MediaKind.Channel && !item.IsCatchup;
         Ui.Page(this, item.Name);
@@ -425,6 +429,11 @@ public sealed class PlayerPage : LocalizedPage
                     snapshot?.HeardEpisodes.ContainsKey(current.Id) == true);
             }
             await player.PlayAsync(current, start);
+            if (PodcastFeed.IsPodcast(current) && queue.Count == 0)
+            {
+                queue = await PodcastService.QueueAsync(current, lifetime.Token);
+                UpdatePodcastEpisodeQueue();
+            }
             if (liveChannel) await LoadGuideAsync();
         }
         catch (Exception ex) { await Ui.ErrorAsync(this, ex); }
@@ -556,10 +565,58 @@ public sealed class PlayerPage : LocalizedPage
         UpdateFullscreenOverlay();
     }
 
+    internal bool CanPlayPreviousPodcastEpisode => !changingPodcastEpisode &&
+        !lifetime.IsCancellationRequested && PodcastFeed.IsPodcast(current);
+
+    internal bool CanPlayNextPodcastEpisode => CanPlayPreviousPodcastEpisode &&
+        nextPodcastEpisode is not null;
+
+    private void UpdatePodcastEpisodeQueue()
+    {
+        previousPodcastEpisode = PodcastPolicy.AdjacentEpisode(current, queue, -1);
+        nextPodcastEpisode = PodcastPolicy.AdjacentEpisode(current, queue, 1);
+    }
+
+    internal Task PlayPreviousPodcastEpisodeAsync() => ChangePodcastEpisodeAsync(-1);
+    internal Task PlayNextPodcastEpisodeAsync() => ChangePodcastEpisodeAsync(1);
+
+    private async Task ChangePodcastEpisodeAsync(int direction)
+    {
+        if (!CanPlayPreviousPodcastEpisode || AudioPlaybackService.Player != player) return;
+        changingPodcastEpisode = true;
+        countdown?.Cancel();
+        var requested = current;
+        var session = AppServices.SessionVersion;
+        try
+        {
+            var target = direction < 0 ? previousPodcastEpisode : nextPodcastEpisode;
+            if (direction < 0 && PodcastPolicy.RestartBeforePrevious(player.Position, target is not null))
+            {
+                if (player.CanSeek) await player.SeekToAsync(0);
+                else await player.PlayAsync(requested);
+                return;
+            }
+            if (target is null) return;
+            if (AppServices.ActiveAccount is { } account &&
+                await OfflineDownloadService.FindAsync(account.Id, UserProfileService.Active.Id, target) is { IsComplete: true } download)
+                target = OfflineDownloadService.PlaybackItem(download);
+            if (lifetime.IsCancellationRequested || session != AppServices.SessionVersion ||
+                AudioPlaybackService.Player != player || current.Id != requested.Id) return;
+            current = target;
+            UpdatePodcastEpisodeQueue();
+            Title = target.Name;
+            mediaTitle.Text = target.Name;
+            favorite.BindingContext = target;
+            nextMessage.Text = "";
+            await player.PlayAsync(target);
+        }
+        finally { changingPodcastEpisode = false; }
+    }
+
     private async Task NextAsync()
     {
         var podcast = PodcastFeed.IsPodcast(current);
-        if (!(podcast ? AppOptions.PodcastAutoPlay : AppOptions.AutoPlay) || countdown is not null || lifetime.IsCancellationRequested) return;
+        if (!(podcast ? AppOptions.PodcastAutoPlay : AppOptions.AutoPlay) || changingPodcastEpisode || countdown is not null || lifetime.IsCancellationRequested) return;
         var session = AppServices.SessionVersion;
         countdown = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         try
@@ -567,8 +624,8 @@ public sealed class PlayerPage : LocalizedPage
             MediaItem? next;
             if (podcast)
             {
-                var episodes = queue.Count > 0 ? queue : await PodcastService.QueueAsync(current, countdown.Token);
-                next = PodcastPolicy.NextEpisode(current, episodes);
+                if (queue.Count == 0) queue = await PodcastService.QueueAsync(current, countdown.Token);
+                next = PodcastPolicy.NextEpisode(current, queue);
             }
             else
             {
@@ -589,6 +646,7 @@ public sealed class PlayerPage : LocalizedPage
             countdown.Token.ThrowIfCancellationRequested();
             if (session != AppServices.SessionVersion || AudioPlaybackService.IsAudio(current) && AudioPlaybackService.Player != player) return;
             current = next; Title = current.Name; mediaTitle.Text = current.Name; favorite.BindingContext = current; nextMessage.Text = "";
+            UpdatePodcastEpisodeQueue();
             await player.PlayAsync(current);
         }
         catch (OperationCanceledException) { }

@@ -23,6 +23,8 @@ public sealed class AndroidPlaybackMediaService : Service
     private const string StopAction = "psiptv.media.STOP";
     private const string RewindAction = "psiptv.media.REWIND";
     private const string ForwardAction = "psiptv.media.FORWARD";
+    private const string PreviousEpisodeAction = "psiptv.media.PREVIOUS_EPISODE";
+    private const string NextEpisodeAction = "psiptv.media.NEXT_EPISODE";
     private static PlaybackView? owner;
     private static AndroidPlaybackMediaService? running;
     private MediaSession? session;
@@ -31,6 +33,8 @@ public sealed class AndroidPlaybackMediaService : Service
     private PSiptv.Core.MediaItem? publishedItem;
     private PlaybackStateCode? publishedState;
     private bool publishedSeekable;
+    private bool publishedPreviousEpisode;
+    private bool publishedNextEpisode;
     private long publishedDuration = -1;
     private Bitmap? artwork;
     private CancellationTokenSource? artworkCancellation;
@@ -126,19 +130,26 @@ public sealed class AndroidPlaybackMediaService : Service
         }
         var state = playback.SystemPlaybackState;
         var seekable = playback.CanSeek && item.Kind != PSiptv.Core.MediaKind.Channel;
+        var previousEpisode = playback.CanPlayPreviousEpisode;
+        var nextEpisode = playback.CanPlayNextEpisode;
         var actions = PlaybackState.ActionPlay | PlaybackState.ActionPause |
             PlaybackState.ActionPlayPause | PlaybackState.ActionStop;
         if (seekable) actions |= PlaybackState.ActionSeekTo | PlaybackState.ActionRewind | PlaybackState.ActionFastForward;
+        if (previousEpisode) actions |= PlaybackState.ActionSkipToPrevious;
+        if (nextEpisode) actions |= PlaybackState.ActionSkipToNext;
         using var stateBuilder = new PlaybackState.Builder();
         using var nativeState = stateBuilder.SetActions(actions)
             .SetState(state, Math.Max(0, (long)(playback.Position * 1000)),
                 state == PlaybackStateCode.Playing ? playback.SystemPlaybackSpeed : 0,
                 SystemClock.ElapsedRealtime()).Build();
         session.SetPlaybackState(nativeState);
-        if (foreground || changedItem || state != publishedState || seekable != publishedSeekable)
+        if (foreground || changedItem || state != publishedState || seekable != publishedSeekable ||
+            previousEpisode != publishedPreviousEpisode || nextEpisode != publishedNextEpisode)
         {
             publishedState = state;
             publishedSeekable = seekable;
+            publishedPreviousEpisode = previousEpisode;
+            publishedNextEpisode = nextEpisode;
             var notification = BuildNotification();
             if (foreground) StartForeground(NotificationId, notification);
             else ((NotificationManager?)GetSystemService(NotificationService))?.Notify(NotificationId, notification);
@@ -233,14 +244,28 @@ public sealed class AndroidPlaybackMediaService : Service
             .SetCategory(Notification.CategoryTransport).SetVisibility(NotificationVisibility.Public)
             .SetOngoing(playing).SetShowWhen(false);
         if (artwork is not null) builder.SetLargeIcon(artwork);
-        if (publishedSeekable)
-            builder.AddAction(NotificationAction(Android.Resource.Drawable.IcMediaRew, "Recuar 15 segundos", RewindAction));
+        var podcast = publishedItem is { } item && PSiptv.Core.PodcastFeed.IsPodcast(item);
+        var compactActions = new List<int>();
+        if (publishedPreviousEpisode || !podcast && publishedSeekable)
+        {
+            compactActions.Add(0);
+            builder.AddAction(publishedPreviousEpisode
+                ? NotificationAction(Android.Resource.Drawable.IcMediaPrevious, "Voltar ao início ou episódio anterior", PreviousEpisodeAction)
+                : NotificationAction(Android.Resource.Drawable.IcMediaRew, "Recuar 15 segundos", RewindAction));
+        }
+        compactActions.Add(compactActions.Count);
         builder.AddAction(NotificationAction(playing ? Android.Resource.Drawable.IcMediaPause : Android.Resource.Drawable.IcMediaPlay,
             playing ? "Pausar" : "Reproduzir", playing ? PauseAction : PlayAction));
-        if (publishedSeekable)
-            builder.AddAction(NotificationAction(Android.Resource.Drawable.IcMediaFf, "Avançar 30 segundos", ForwardAction));
+        if (publishedNextEpisode || !podcast && publishedSeekable)
+        {
+            compactActions.Add(compactActions.Count);
+            builder.AddAction(publishedNextEpisode
+                ? NotificationAction(Android.Resource.Drawable.IcMediaNext, "Próximo episódio", NextEpisodeAction)
+                : NotificationAction(Android.Resource.Drawable.IcMediaFf, "Avançar 30 segundos", ForwardAction));
+        }
+        if (compactActions.Count == 1) compactActions.Add(1);
         builder.AddAction(NotificationAction(Android.Resource.Drawable.IcMenuCloseClearCancel, "Parar", StopAction));
-        style.SetShowActionsInCompactView(publishedSeekable ? [0, 1, 2] : [0, 1]);
+        style.SetShowActionsInCompactView(compactActions.ToArray());
         return builder.SetStyle(style).Build();
     }
 
@@ -287,6 +312,12 @@ public sealed class AndroidPlaybackMediaService : Service
                 case ForwardAction:
                     if (publishedSeekable) await playback.SeekByAsync(30);
                     break;
+                case PreviousEpisodeAction:
+                    await playback.PlayPreviousEpisodeAsync();
+                    break;
+                case NextEpisodeAction:
+                    await playback.PlayNextEpisodeAsync();
+                    break;
                 case "seek":
                     await playback.SeekFromSystemAsync(position);
                     break;
@@ -314,6 +345,7 @@ public sealed class AndroidPlaybackMediaService : Service
         publishedOwner = null;
         publishedItem = null;
         publishedState = null;
+        publishedPreviousEpisode = publishedNextEpisode = false;
         publishedDuration = -1;
         StopForeground(StopForegroundFlags.Remove);
     }
@@ -335,6 +367,8 @@ public sealed class AndroidPlaybackMediaService : Service
         public override void OnSeekTo(long pos) => service.Execute("seek", pos);
         public override void OnRewind() => service.Execute(RewindAction);
         public override void OnFastForward() => service.Execute(ForwardAction);
+        public override void OnSkipToPrevious() => service.Execute(PreviousEpisodeAction);
+        public override void OnSkipToNext() => service.Execute(NextEpisodeAction);
     }
 }
 #pragma warning restore CS8602, CS8603, CS8604

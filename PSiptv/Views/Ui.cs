@@ -68,20 +68,36 @@ public static class Ui
         };
         button.SetDynamicResource(VisualElement.BackgroundColorProperty, primary ? "Accent" : "Surface");
         button.SetDynamicResource(Microsoft.Maui.Controls.Button.BorderColorProperty, "Accent");
-        button.Focused += (_, _) => { button.BorderWidth = 3; button.Scale = IsTelevision && !ExperienceService.ReduceMotion ? 1.04 : 1; };
-        button.Unfocused += (_, _) => { button.BorderWidth = 0; button.Scale = 1; };
+        button.Focused += (_, _) =>
+        {
+            button.BorderWidth = IsTelevision ? 5 : 3;
+            button.Scale = IsTelevision && !ExperienceService.ReduceMotion ? 1.06 : 1;
+            if (IsTelevision)
+            {
+                FocusMemory.Remember(button);
+            }
+        };
+        button.Unfocused += (_, _) =>
+        {
+            button.BorderWidth = 0;
+            button.Scale = 1;
+        };
         if (primary) button.SetDynamicResource(Microsoft.Maui.Controls.Button.TextColorProperty, "OnAccent");
         else button.SetDynamicResource(Microsoft.Maui.Controls.Button.TextColorProperty, "Ink");
+        var running = false;
         button.Clicked += async (_, _) =>
         {
-            button.IsEnabled = false;
+            if (running) return;
+            running = true;
+            // Disabling the native button on TV drops D-pad focus during the action.
+            if (!IsTelevision) button.IsEnabled = false;
             try { await action(); }
             catch (OperationCanceledException ex)
             {
                 if (!ex.CancellationToken.IsCancellationRequested) await ErrorAsync(button, ex);
             }
             catch (Exception ex) { await ErrorAsync(button, ex); }
-            finally { button.IsEnabled = true; }
+            finally { running = false; if (!IsTelevision) button.IsEnabled = true; }
         };
         return button;
     }
@@ -350,6 +366,7 @@ public static class Ui
 public sealed class TvFocusableBorder : Border
 {
     internal Action<object?>? Activate { get; init; }
+    internal Func<TvNavigationDirection, int, bool>? Navigate { get; set; }
     internal MediaItem? FavoriteItem { get; set; }
 
     internal void ActivateFromRemote() => Activate?.Invoke(BindingContext);

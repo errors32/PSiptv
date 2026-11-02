@@ -1,4 +1,5 @@
 using PSiptv.Services;
+using PSiptv.Core;
 using Microsoft.Maui.Controls.Shapes;
 
 namespace PSiptv.Views;
@@ -10,16 +11,25 @@ public sealed class AudioMiniPlayerView : ContentView
     private readonly Button toggle;
     private readonly Button backward;
     private readonly Button forward;
+    private readonly Button previousEpisode;
+    private readonly Button nextEpisode;
+    private readonly Grid buttons;
     private readonly IDispatcherTimer timer;
     private readonly Slider timeline = new() { Minimum = 0, Maximum = 1 };
     private bool dragging;
     private PlaybackView? seekingPlayer;
+    private string? seekingEpisodeId;
 
     public AudioMiniPlayerView()
     {
         IsVisible = false;
         SemanticProperties.SetDescription(timeline, LanguageService.Text("Posição de reprodução"));
-        timeline.DragStarted += (_, _) => { dragging = true; seekingPlayer = AudioPlaybackService.Player; };
+        timeline.DragStarted += (_, _) =>
+        {
+            dragging = true;
+            seekingPlayer = AudioPlaybackService.Player;
+            seekingEpisodeId = seekingPlayer?.ActiveMedia?.Id;
+        };
         timeline.ValueChanged += (_, _) =>
         {
             if (dragging && seekingPlayer is { } player) UpdatePosition(timeline.Value, player.Duration);
@@ -30,10 +40,11 @@ public sealed class AudioMiniPlayerView : ContentView
             var target = timeline.Value;
             try
             {
-                if (player is not null && player == AudioPlaybackService.Player) await player.SeekToAsync(target);
+                if (player is not null && player == AudioPlaybackService.Player &&
+                    player.ActiveMedia?.Id == seekingEpisodeId) await player.SeekToAsync(target);
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
-            finally { dragging = false; seekingPlayer = null; Refresh(); }
+            finally { dragging = false; seekingPlayer = null; seekingEpisodeId = null; Refresh(); }
         };
         title.LineBreakMode = LineBreakMode.TailTruncation;
         toggle = Icon(FaIcons.Play, "Reproduzir ou pausar", async () =>
@@ -43,6 +54,10 @@ public sealed class AudioMiniPlayerView : ContentView
         });
         backward = Ui.Button("−15 s", () => AudioPlaybackService.Player?.SeekByAsync(-15) ?? Task.CompletedTask);
         forward = Ui.Button("+30 s", () => AudioPlaybackService.Player?.SeekByAsync(30) ?? Task.CompletedTask);
+        previousEpisode = Icon(FaIcons.BackwardStep, "Voltar ao início ou episódio anterior",
+            () => AudioPlaybackService.Player?.PlayPreviousEpisodeAsync() ?? Task.CompletedTask);
+        nextEpisode = Icon(FaIcons.ForwardStep, "Próximo episódio",
+            () => AudioPlaybackService.Player?.PlayNextEpisodeAsync() ?? Task.CompletedTask);
         var stop = Icon("\uf04d", "Parar e fechar o leitor", AudioPlaybackService.StopAsync);
         var details = new VerticalStackLayout { Spacing = 4, Children = { title, position } };
         var open = new TapGestureRecognizer();
@@ -51,15 +66,22 @@ public sealed class AudioMiniPlayerView : ContentView
         var heading = new Grid { ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto)] };
         heading.Add(details);
         heading.Add(Icon(FaIcons.ArrowUpRightFromSquare, "Voltar ao episódio em reprodução", OpenCurrentAsync), 1);
-        var buttons = new Grid
+        buttons = new Grid
         {
             ColumnDefinitions = new ColumnDefinitionCollection
             {
-                new(GridLength.Star), new(GridLength.Star), new(GridLength.Star), new(GridLength.Star)
+                new(GridLength.Star), new(GridLength.Star), new(GridLength.Star),
+                new(GridLength.Star), new(GridLength.Star), new(GridLength.Star)
             },
-            ColumnSpacing = 6
+            ColumnSpacing = 4
         };
-        buttons.Add(backward, 0); buttons.Add(toggle, 1); buttons.Add(forward, 2); buttons.Add(stop, 3);
+        foreach (var button in new[] { previousEpisode, backward, toggle, forward, nextEpisode, stop })
+            button.Padding = new Thickness(4, 10);
+        backward.FontSize = forward.FontSize = 12;
+        buttons.Add(previousEpisode, 0); buttons.Add(backward, 1); buttons.Add(toggle, 2);
+        buttons.Add(forward, 3); buttons.Add(nextEpisode, 4); buttons.Add(stop, 5);
+        // Collapse episode navigation for live radio, keeping the original four controls evenly spaced.
+        previousEpisode.IsVisible = nextEpisode.IsVisible = false;
         Content = new Border
         {
             Margin = new Thickness(8, 4, 8, 8), Padding = 10,
@@ -115,6 +137,12 @@ public sealed class AudioMiniPlayerView : ContentView
         toggle.Text = player.IsPlaying ? FaIcons.Pause : FaIcons.Play;
         SemanticProperties.SetDescription(toggle, LanguageService.Text(player.IsPlaying ? "Pausar" : "Reproduzir"));
         backward.IsEnabled = forward.IsEnabled = player.CanSeek;
+        var podcast = PodcastFeed.IsPodcast(item);
+        previousEpisode.IsVisible = nextEpisode.IsVisible = podcast;
+        buttons.ColumnDefinitions[0].Width = buttons.ColumnDefinitions[4].Width =
+            podcast ? GridLength.Star : new GridLength(0);
+        previousEpisode.IsEnabled = player.CanPlayPreviousEpisode;
+        nextEpisode.IsEnabled = player.CanPlayNextEpisode;
     }
 
     private void UpdatePosition(double seconds, double duration) => position.Text =

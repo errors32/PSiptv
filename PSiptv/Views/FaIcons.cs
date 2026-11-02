@@ -17,6 +17,7 @@ internal static class FaIcons
     public const string WindowRestore = "\uf2d2";
     public const string TowerBroadcast = "\uf519";
     public const string Play = "\uf04b";
+    public const string Stop = "\uf04d";
     public const string Clock = "\uf017";
     public const string Broom = "\uf51a";
     public const string RotateRight = "\uf2f9";
@@ -57,6 +58,8 @@ internal static class FaIcons
     public const string ChevronRight = "\uf054";
     public const string ArrowUpRightFromSquare = "\uf35d";
     public const string Pause = "\uf04c";
+    public const string BackwardStep = "\uf048";
+    public const string ForwardStep = "\uf051";
     public const string Expand = "\uf065";
     public const string Compress = "\uf066";
     public const string CropSimple = "\uf565";

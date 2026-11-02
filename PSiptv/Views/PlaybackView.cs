@@ -14,6 +14,10 @@ public sealed class PlaybackView : ContentView
 {
     public bool RetainAcrossNavigation { get; internal set; }
     internal PlayerPage? OwnerPage { get; set; }
+    internal bool CanPlayPreviousEpisode => OwnerPage?.CanPlayPreviousPodcastEpisode == true;
+    internal bool CanPlayNextEpisode => OwnerPage?.CanPlayNextPodcastEpisode == true;
+    internal Task PlayPreviousEpisodeAsync() => OwnerPage?.PlayPreviousPodcastEpisodeAsync() ?? Task.CompletedTask;
+    internal Task PlayNextEpisodeAsync() => OwnerPage?.PlayNextPodcastEpisodeAsync() ?? Task.CompletedTask;
     public event Action? PlaybackStopping;
     public bool CanSeek =>
 #if ANDROID || WINDOWS
@@ -89,6 +93,8 @@ public sealed class PlaybackView : ContentView
     private readonly TransferRateEstimator demuxTransferRate = new();
     private readonly Slider seek = new() { Minimum = 0, Maximum = 1 };
     private readonly Button pause;
+    private readonly Button previousPodcast;
+    private readonly Button nextPodcast;
     private readonly Button aspect;
     private readonly Button audio;
     private readonly Button subtitles;
@@ -229,6 +235,22 @@ public sealed class PlaybackView : ContentView
         pause.WidthRequest = 48;
         pause.Padding = 10;
         SemanticProperties.SetDescription(pause, LanguageService.Text("Reproduzir ou pausar"));
+        previousPodcast = Ui.Button("", PlayPreviousEpisodeAsync);
+        nextPodcast = Ui.Button("", PlayNextEpisodeAsync);
+        foreach (var (button, glyph, description) in new[]
+        {
+            (previousPodcast, FaIcons.BackwardStep, "Voltar ao início ou episódio anterior"),
+            (nextPodcast, FaIcons.ForwardStep, "Próximo episódio")
+        })
+        {
+            button.IsVisible = false;
+            button.IsEnabled = false;
+            button.ImageSource = Ui.FontIconSource(glyph, 20);
+            button.WidthRequest = 48;
+            button.Padding = 10;
+            SemanticProperties.SetDescription(button, LanguageService.Text(description));
+            ToolTipProperties.SetText(button, LanguageService.Text(description));
+        }
         aspect = Ui.Button("Proporção", SelectAspectRatioAsync);
         aspect.ImageSource = Ui.FontIconSource(FaIcons.CropSimple, 20);
         aspect.Padding = new Thickness(10, 4);
@@ -274,7 +296,7 @@ public sealed class PlaybackView : ContentView
             Spacing = 8,
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.End,
-            Children = { pause, aspect, audio, subtitles, timeshiftControls }
+            Children = { previousPodcast, pause, nextPodcast, aspect, audio, subtitles, timeshiftControls }
         };
         var actionScroll = new ScrollView
         {
@@ -369,6 +391,7 @@ public sealed class PlaybackView : ContentView
             if (player?.State == VLCState.Ended && !ended) { ended = true; SetKeepScreenOn(false); RecordPodcastCompletion(); MediaEnded?.Invoke(this, EventArgs.Empty); }
             if (player is not null && !dragging) { seek.Maximum = Math.Max(1, player.Length / 1000d); seek.Value = Math.Clamp(Position, 0, seek.Maximum); seek.IsEnabled = player.IsSeekable; }
             UpdateTimeshiftControls();
+            UpdatePodcastEpisodeControls();
             UpdatePlaybackButton();
             rate.IsVisible = AppOptions.NetworkSpeed;
             if (media is not null && rate.IsVisible)
@@ -660,6 +683,7 @@ public sealed class PlaybackView : ContentView
             current = item; accountId = account?.Id ?? ""; session = version;
             completionRecorded = false;
 #if ANDROID || WINDOWS
+            UpdatePodcastEpisodeControls();
 #if WINDOWS
             var swapChainOptions = await WaitForWindowsVideoHostAsync(request);
             if (swapChainOptions is null) return;
@@ -1123,6 +1147,14 @@ public sealed class PlaybackView : ContentView
         var playing = player?.IsPlaying == true;
         pause.ImageSource = Ui.FontIconSource(playing ? FaIcons.Pause : FaIcons.Play, 20);
         SemanticProperties.SetDescription(pause, LanguageService.Text(playing ? "Pausar" : "Reproduzir"));
+    }
+
+    private void UpdatePodcastEpisodeControls()
+    {
+        var podcast = current is { } item && PodcastFeed.IsPodcast(item);
+        previousPodcast.IsVisible = nextPodcast.IsVisible = podcast;
+        previousPodcast.IsEnabled = podcast && CanPlayPreviousEpisode;
+        nextPodcast.IsEnabled = podcast && CanPlayNextEpisode;
     }
 
     private bool IsTimeshiftChannel => current?.Kind == MediaKind.Channel && AppOptions.TimeshiftEnabled;

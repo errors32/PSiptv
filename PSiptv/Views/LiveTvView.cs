@@ -41,6 +41,13 @@ public sealed class LiveTvView : ContentView
     private readonly Grid fullscreenToolbar;
     private readonly Button fullscreenFocusTarget;
     private readonly Button maximize;
+    private readonly Button previewPlayback;
+    private bool previewPlaybackActive;
+    private bool changingPreviewPlayback;
+    private int previewPlaybackVersion;
+    private string? focusedChannelKey;
+    private string? pendingChannelFocus;
+    private int channelFocusRequest;
     private readonly Grid controls;
     private readonly Button viewModeButton;
     private readonly Button multiviewButton;
@@ -52,6 +59,7 @@ public sealed class LiveTvView : ContentView
     private string displayedScope = "";
     private string recentHistoryScope = "";
     private readonly Dictionary<string, WeakReference<TvFocusableBorder>> channelCards = [];
+    private readonly Dictionary<string, int> channelIndices = [];
     private bool guideMode;
     private InterfaceDesign? appliedDesign;
     private bool radioMode;
@@ -206,28 +214,50 @@ public sealed class LiveTvView : ContentView
         player.MediaOpened += (_, _) =>
         {
             if (player.ActiveMedia is { } actual) { CurrentItem = actual; channelName.Text = actual.Name; }
+            previewPlaybackActive = true;
+            UpdatePreviewPlaybackButton();
             message.Text = "";
             player.UseStretchToViewport();
         };
         player.StatusChanged += text => message.Text = text;
         player.MediaFailed += (_, _) =>
         {
+            previewPlaybackActive = false;
+            UpdatePreviewPlaybackButton();
             if (string.IsNullOrWhiteSpace(message.Text))
                 message.Text = "Não foi possível reproduzir. Toque novamente no canal para tentar.";
         };
+        player.MediaEnded += (_, _) => { previewPlaybackActive = false; UpdatePreviewPlaybackButton(); };
+        player.PlaybackStopping += () =>
+        {
+            previewPlaybackVersion++;
+            previewPlaybackActive = false;
+            UpdatePreviewPlaybackButton();
+        };
         video.Add(player);
-        controls = new Grid { Padding = 8, ColumnSpacing = 6, VerticalOptions = LayoutOptions.End };
+        controls = new Grid { Padding = 12, ColumnSpacing = 10, VerticalOptions = LayoutOptions.End };
         channelName.TextColor = Colors.White;
         channelName.MaxLines = 1;
         channelName.LineBreakMode = LineBreakMode.TailTruncation;
         maximize = Ui.Button("", () => { SetFullscreen(!IsFullscreen); return Task.CompletedTask; });
-        maximize.ImageSource = Ui.FontIconSource(FaIcons.Expand, 22);
-        maximize.Padding = 10;
+        maximize.ImageSource = Ui.FontIconSource(FaIcons.Expand, Ui.IsTelevision ? 32 : 28);
+        previewPlayback = Ui.Button("", TogglePreviewPlaybackAsync);
+        foreach (var button in new[] { previewPlayback, maximize })
+        {
+            button.WidthRequest = button.HeightRequest = Ui.IsTelevision ? 76 : 64;
+            button.MinimumHeightRequest = Ui.IsTelevision ? 76 : 64;
+            button.Padding = 14;
+            button.Focused += (_, _) => CancelPendingChannelFocus();
+            ConfigurePreviewNavigation(button);
+        }
         SemanticProperties.SetDescription(maximize, LanguageService.Text("Maximizar ecrã"));
-        controls.ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)];
+        ToolTipProperties.SetText(maximize, LanguageService.Text("Maximizar ecrã"));
+        controls.ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto)];
         channelName.IsVisible = false;
         controls.Add(channelName);
-        controls.Add(maximize, 1);
+        controls.Add(previewPlayback, 1);
+        controls.Add(maximize, 2);
+        UpdatePreviewPlaybackButton();
         video.Add(controls);
 
         var closeMenu = Ui.Button("", () => { CloseChannelMenu(); return Task.CompletedTask; });
@@ -384,7 +414,7 @@ public sealed class LiveTvView : ContentView
         player.ControlsVisibilityChanged += UpdatePlaybackControlsVisibility;
         SizeChanged += (_, _) => Arrange();
         Loaded += (_, _) => Arrange();
-        Unloaded += (_, _) => ReleaseFullscreenKeyHandler();
+        Unloaded += (_, _) => { ReleaseFullscreenKeyHandler(); CancelPendingChannelFocus(); };
         PictureInPictureService.Changed += () =>
         {
             // PiP needs the same video-only layout as fullscreen, but it must
@@ -455,6 +485,10 @@ public sealed class LiveTvView : ContentView
             group = LanguageService.Text("Últimos canais");
         }
         displayedChannels = items;
+        channelIndices.Clear();
+        for (var index = 0; index < items.Count; index++)
+            channelIndices.TryAdd(CatalogPreferences.ItemKey(items[index]), index);
+        CancelPendingChannelFocus();
         refreshChannelsAfterLayout = !channels.IsLoaded || channels.Width <= 0 || channels.Height <= 0;
         displayedScope = (AppServices.ActiveAccount is { } account ? UserProfileService.Scope(account.Id) : "") +
             ":" + radioMode + ":" + favoritesSection + ":" + group;
@@ -473,11 +507,99 @@ public sealed class LiveTvView : ContentView
 
     private void TrackChannelCard(TvFocusableBorder card)
     {
+        card.Navigate = (direction, repeat) => NavigateChannelCard(card, direction, repeat);
+        card.Focused += (_, _) =>
+        {
+            if (card.BindingContext is MediaItem item) focusedChannelKey = CatalogPreferences.ItemKey(item);
+        };
         card.BindingContextChanged += (_, _) =>
         {
             if (card.BindingContext is MediaItem item)
                 channelCards[CatalogPreferences.ItemKey(item)] = new(card);
         };
+    }
+
+    private bool NavigateChannelCard(TvFocusableBorder card, TvNavigationDirection direction, int repeat)
+    {
+        if (!Ui.IsTelevision || IsVideoOnly || !channels.IsVisible || card.BindingContext is not MediaItem item) return false;
+        var key = pendingChannelFocus ?? CatalogPreferences.ItemKey(item);
+        if (!channelIndices.TryGetValue(key, out var index)) return false;
+        focusedChannelKey = key;
+        if (direction == TvNavigationDirection.Left && index % cardsLayout.Span == 0)
+        {
+            CancelPendingChannelFocus();
+            return maximize.Focus();
+        }
+        if (repeat >= 8)
+            direction = direction switch
+            {
+                TvNavigationDirection.Up => TvNavigationDirection.PageUp,
+                TvNavigationDirection.Down => TvNavigationDirection.PageDown,
+                _ => direction
+            };
+        var rows = Math.Max(1, (int)(channels.Height / Math.Max(1, card.Height + cardsLayout.VerticalItemSpacing)));
+        var target = TvChannelNavigation.Target(index, displayedChannels.Count, cardsLayout.Span, direction, rows);
+        if (target >= 0) return FocusChannel(target);
+        // Do not wrap horizontally into the next row; Up/Down leave the list at its ends.
+        return direction == TvNavigationDirection.Right;
+    }
+
+    private void ConfigurePreviewNavigation(Button button)
+    {
+#if ANDROID
+        button.HandlerChanged += (_, _) =>
+        {
+            if (Ui.IsTelevision && button.Handler?.PlatformView is Android.Views.View native)
+                AndroidTvFocus.AttachNavigation(native, (direction, _) =>
+                {
+                    if (IsVideoOnly) return false;
+                    if (button == maximize && direction == TvNavigationDirection.Left) return previewPlayback.Focus();
+                    if (button == previewPlayback && direction == TvNavigationDirection.Right) return maximize.Focus();
+                    if (direction is TvNavigationDirection.Right or TvNavigationDirection.Down) return FocusLastChannel();
+                    return false;
+                });
+        };
+#endif
+    }
+
+    private bool FocusLastChannel()
+    {
+        if (!channels.IsVisible || displayedChannels.Count == 0) return false;
+        var key = focusedChannelKey ?? (CurrentItem is { } item ? CatalogPreferences.ItemKey(item) : null);
+        return FocusChannel(key is not null && channelIndices.TryGetValue(key, out var index) ? index : 0);
+    }
+
+    private bool FocusChannel(int index)
+    {
+        if (index < 0 || index >= displayedChannels.Count) return false;
+        var item = displayedChannels[index];
+        var key = CatalogPreferences.ItemKey(item);
+        pendingChannelFocus = focusedChannelKey = key;
+        var request = ++channelFocusRequest;
+        channels.ScrollTo(item, position: ScrollToPosition.MakeVisible, animate: false);
+        RestoreChannelFocus(key, request, 0);
+        return true;
+    }
+
+    private void RestoreChannelFocus(string key, int request, int attempt)
+    {
+        if (request != channelFocusRequest || !IsLoaded || !IsVisible || IsVideoOnly || !channels.IsVisible) return;
+        if (FindPage() is not { } page || page.Navigation.ModalStack.Count > 0 || page.Navigation.NavigationStack.LastOrDefault() != page) return;
+        if (channelCards.TryGetValue(key, out var weak) && weak.TryGetTarget(out var card) && card.IsLoaded &&
+            card.BindingContext is MediaItem bound && CatalogPreferences.ItemKey(bound) == key && card.Focus())
+        {
+            pendingChannelFocus = null;
+            return;
+        }
+        // RecyclerView may need another layout pass to realize an off-screen target.
+        if (attempt < 10) Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(40), () => RestoreChannelFocus(key, request, attempt + 1));
+        else pendingChannelFocus = null;
+    }
+
+    private void CancelPendingChannelFocus()
+    {
+        channelFocusRequest++;
+        pendingChannelFocus = null;
     }
 
     private async Task LoadRadiosAsync(int request)
@@ -512,7 +634,34 @@ public sealed class LiveTvView : ContentView
     public Task ShowRadioAsync() => radioMode ? Task.CompletedTask : ToggleRadioModeAsync();
     public Task ShowTelevisionAsync() => radioMode ? ToggleRadioModeAsync() : Task.CompletedTask;
     public Task OpenMultiviewFromMenuAsync() => OpenMultiviewAsync();
-    public Task TogglePlaybackFromShortcutAsync() => player.TogglePlayPauseAsync();
+    public Task TogglePlaybackFromShortcutAsync() => IsVideoOnly ? player.TogglePlayPauseAsync() : TogglePreviewPlaybackAsync();
+
+    private void UpdatePreviewPlaybackButton()
+    {
+        var description = LanguageService.Text(previewPlaybackActive ? "Parar canal" : "Reproduzir canal");
+        previewPlayback.ImageSource = Ui.FontIconSource(previewPlaybackActive ? FaIcons.Stop : FaIcons.Play, Ui.IsTelevision ? 32 : 28);
+        previewPlayback.IsEnabled = CurrentItem is not null && (!changingPreviewPlayback || Ui.IsTelevision);
+        maximize.IsEnabled = CurrentItem is not null;
+        SemanticProperties.SetDescription(previewPlayback, description);
+        ToolTipProperties.SetText(previewPlayback, description);
+    }
+
+    private async Task TogglePreviewPlaybackAsync()
+    {
+        if (CurrentItem is not { } item || changingPreviewPlayback) return;
+        changingPreviewPlayback = true;
+        UpdatePreviewPlaybackButton();
+        try
+        {
+            if (previewPlaybackActive)
+            {
+                await player.StopForExternalPlaybackAsync();
+                if (player.ActiveMedia is null) message.Text = LanguageService.Text("Reprodução parada");
+            }
+            else await SelectChannelAsync(item, false);
+        }
+        finally { changingPreviewPlayback = false; UpdatePreviewPlaybackButton(); }
+    }
 
     public void ApplyDesign()
     {
@@ -575,6 +724,7 @@ public sealed class LiveTvView : ContentView
             ? current : null;
         player.Stop();
         CurrentItem = null;
+        UpdatePreviewPlaybackButton();
         channelName.Text = "TV ao Vivo";
         channelName.IsVisible = false;
         message.Text = "Escolha um canal para reproduzir";
@@ -641,7 +791,15 @@ public sealed class LiveTvView : ContentView
         channelName.Text = item.Name;
         channelName.IsVisible = true;
         message.Text = "A ligar à transmissão…";
-        await player.PlayAsync(item);
+        var request = ++previewPlaybackVersion;
+        previewPlaybackActive = true;
+        UpdatePreviewPlaybackButton();
+        try { await player.PlayAsync(item); }
+        catch
+        {
+            if (request == previewPlaybackVersion) { previewPlaybackActive = false; UpdatePreviewPlaybackButton(); }
+            throw;
+        }
     }
 
 #if ANDROID
@@ -691,6 +849,7 @@ public sealed class LiveTvView : ContentView
         }
         player.Stop();
         CurrentItem = null;
+        UpdatePreviewPlaybackButton();
 
         channelName.Text = "TV ao Vivo";
         channelName.IsVisible = false;
@@ -704,6 +863,7 @@ public sealed class LiveTvView : ContentView
     {
         if (value == IsFullscreen) return;
         IsFullscreen = value;
+        CancelPendingChannelFocus();
 #if ANDROID
         if (Ui.IsTelevision)
         {
@@ -713,19 +873,13 @@ public sealed class LiveTvView : ContentView
 #endif
         player.SetPreviewMode(!value);
         if (!value) channelMenu.IsVisible = false;
-        maximize.ImageSource = Ui.FontIconSource(value ? FaIcons.Compress : FaIcons.Expand, 22);
+        maximize.ImageSource = Ui.FontIconSource(value ? FaIcons.Compress : FaIcons.Expand, Ui.IsTelevision ? 32 : 28);
         SemanticProperties.SetDescription(maximize, LanguageService.Text(value ? "Sair do ecrã inteiro" : "Maximizar ecrã"));
         player.SetFullscreen(value);
         ScreenOrientationService.SetFullscreen(value);
         FullscreenChanged?.Invoke(value);
         Arrange();
-        if (!value && Ui.IsTelevision && CurrentItem is { } focusedItem &&
-            channelCards.TryGetValue(CatalogPreferences.ItemKey(focusedItem), out var weak))
-            Dispatcher.Dispatch(() =>
-            {
-                if (weak.TryGetTarget(out var card) && card.Handler is not null &&
-                    card.BindingContext is MediaItem bound && bound.Id == focusedItem.Id) card.Focus();
-            });
+        if (!value && Ui.IsTelevision) Dispatcher.Dispatch(() => FocusLastChannel());
     }
 
     private void Arrange()

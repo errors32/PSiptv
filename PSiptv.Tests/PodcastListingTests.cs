@@ -17,6 +17,33 @@ internal static class PodcastListingTests
         check(PodcastPolicy.NextEpisode(current, [current, Dated("same-day", 0)]) is null &&
             PodcastPolicy.NextEpisode(current with { PublishedAt = null }, [tomorrow]) is null,
             "Próximo podcast não repete o mesmo dia nem adivinha a sequência sem data");
+        var older = Dated("older", -1);
+        var sameDay = Dated("same-day-manual", 0) with { PublishedAt = day.AddHours(1) };
+        MediaItem[] navigationQueue = [later, tomorrow, sameDay, current, older, older,
+            Dated("other-feed", 0, "podcast:other"), current with { Id = "podcast:subscription", HasEpisodes = true }];
+        check(PodcastPolicy.AdjacentEpisode(current, navigationQueue, 1) == sameDay &&
+            PodcastPolicy.AdjacentEpisode(sameDay, navigationQueue, 1) == tomorrow,
+            "Seguinte manual avança por ordem cronológica e inclui episódios publicados no mesmo dia");
+        check(PodcastPolicy.AdjacentEpisode(current, navigationQueue, -1) == older &&
+            PodcastPolicy.AdjacentEpisode(tomorrow, navigationQueue, -1) == sameDay,
+            "Anterior manual recua por data e ignora duplicados, subscrições e outros podcasts");
+        check(PodcastPolicy.AdjacentEpisode(older, navigationQueue, -1) is null &&
+            PodcastPolicy.AdjacentEpisode(later, navigationQueue, 1) is null,
+            "Navegação manual termina no primeiro e último episódios sem dar a volta à fila");
+        check(PodcastPolicy.AdjacentEpisode(Dated("missing", 0), navigationQueue, 1) is null &&
+            PodcastPolicy.AdjacentEpisode(current with { ParentSeriesId = "" }, navigationQueue, 1) is null &&
+            PodcastPolicy.AdjacentEpisode(current, navigationQueue, 0) is null,
+            "Fila sem episódio atual, podcast identificado ou direção válida não muda de episódio");
+        var undatedFirst = older with { PublishedAt = null };
+        var undatedSecond = current with { PublishedAt = null };
+        check(PodcastPolicy.AdjacentEpisode(undatedFirst, [undatedFirst, undatedSecond], 1) == undatedSecond &&
+            PodcastPolicy.AdjacentEpisode(undatedSecond, [undatedFirst, undatedSecond], -1) == undatedFirst,
+            "Episódios sem data preservam a ordem da fila para navegação manual");
+        check(PodcastPolicy.RestartBeforePrevious(3.1, true) &&
+            !PodcastPolicy.RestartBeforePrevious(3, true) && !PodcastPolicy.RestartBeforePrevious(0, true),
+            "Anterior reinicia após três segundos e passa ao episódio anterior quando está no início");
+        check(PodcastPolicy.RestartBeforePrevious(0, false) && PodcastPolicy.RestartBeforePrevious(60, false),
+            "Sem episódio anterior, o comando anterior volta sempre ao início do atual");
         check(AudioPlaybackPolicy.IsInFinalMinute(540, 600) && AudioPlaybackPolicy.IsInFinalMinute(599, 600) &&
             !AudioPlaybackPolicy.IsInFinalMinute(539, 600) && !AudioPlaybackPolicy.IsInFinalMinute(0, 30) &&
             !AudioPlaybackPolicy.IsInFinalMinute(20, 0) && !AudioPlaybackPolicy.IsInFinalMinute(double.NaN, 600),

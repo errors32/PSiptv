@@ -5,6 +5,19 @@ public sealed record PodcastOptions(bool AutomaticDownloads = false, bool WifiOn
 
 public static class PodcastPolicy
 {
+    public static MediaItem? AdjacentEpisode(MediaItem current, IEnumerable<MediaItem> episodes, int direction)
+    {
+        if (string.IsNullOrEmpty(current.ParentSeriesId) || direction is not (-1 or 1)) return null;
+        var ordered = PodcastFeed.OrderByDate(episodes.Where(e => !e.HasEpisodes &&
+            e.ParentSeriesId == current.ParentSeriesId).DistinctBy(e => e.Id), newestFirst: false).ToArray();
+        var index = Array.FindIndex(ordered, e => e.Id == current.Id);
+        var target = index + direction;
+        return index >= 0 && target >= 0 && target < ordered.Length ? ordered[target] : null;
+    }
+
+    public static bool RestartBeforePrevious(double position, bool hasPrevious) =>
+        !hasPrevious || double.IsFinite(position) && position > 3;
+
     public static MediaItem? NextEpisode(MediaItem current, IEnumerable<MediaItem> episodes)
     {
         if (current.PublishedAt is not { } date || string.IsNullOrEmpty(current.ParentSeriesId)) return null;
